@@ -1,0 +1,6 @@
+# Core pipeline runs with stdlib only. Install the optional API + LLM layers as needed.
+fastapi>=0.110
+uvicorn>=0.29
+pydantic>=2.6
+langchain>=0.2
+langchain-ibm>=0.1

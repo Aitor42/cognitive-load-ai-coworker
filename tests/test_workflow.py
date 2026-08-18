@@ -9,6 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from loadguard.impact import estimate_impact  # noqa: E402
+from loadguard.llm import ChatModel  # noqa: E402
 from loadguard.models import (  # noqa: E402
     CONTEXT_SWITCH,
     FOCUS_BLOCK,
@@ -107,6 +108,26 @@ class TestWorkflow(unittest.TestCase):
         impact = estimate_impact(features, plan)
         self.assertEqual(impact.before_score, impact.after_score)
         self.assertEqual(impact.delta, 0.0)
+
+    def test_workflow_records_proposing_model(self):
+        class _Proposer(ChatModel):
+            name = "fake"
+
+            def generate_note(self, load_report, plan, tasks):
+                return "A safe note."
+
+            def propose_plan(self, features, load_report, tasks):
+                return (
+                    '{"priority_task_id": "a", "delegate_task_ids": [], '
+                    '"inserts": [], "rationale": "ok"}'
+                )
+
+        result = run_workflow(
+            _overload_events(),
+            [Task(id="a", title="Fix", priority=5)],
+            model=_Proposer(),
+        )
+        self.assertEqual(result.plan.proposed_by, "fake")
 
 
 if __name__ == "__main__":

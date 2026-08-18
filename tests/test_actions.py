@@ -66,6 +66,32 @@ class TestExportIcs(unittest.TestCase):
         self.assertEqual(_ics_escape("Hello,;\\World"), "Hello\\,\\;\\\\World")
         self.assertEqual(_ics_escape(""), "")
 
+    def test_batch_advances_cursor_before_block(self):
+        plan = Plan(
+            load_report=LoadReport(score=80.0, level="overload"),
+            plan_id="x",
+            items=[
+                PlanItem(position=1, action="batch", title="Batch notifications"),
+                PlanItem(position=2, action="focus_block", title="Focus block"),
+            ],
+        )
+        ics = export_ics(plan, _tasks(), start_epoch=1_700_000_000.0)
+        self.assertIn("DTSTART:20231114T221820Z", ics)  # 22:13:20 + 5 min (batch)
+
+    def test_default_start_epoch_is_rounded(self):
+        ics = export_ics(_plan(), _tasks())
+        self.assertIn("BEGIN:VCALENDAR", ics)
+        self.assertIn("BEGIN:VEVENT", ics)
+
+    def test_do_item_without_task_is_skipped(self):
+        plan = Plan(
+            load_report=LoadReport(score=80.0, level="overload"),
+            plan_id="x",
+            items=[PlanItem(position=1, action="do", task_id=None, title="Untracked")],
+        )
+        ics = export_ics(plan, _tasks(), start_epoch=1_700_000_000.0)
+        self.assertEqual(ics.count("BEGIN:VEVENT"), 0)
+
 
 class TestExportCsv(unittest.TestCase):
     def test_columns_and_rows(self):
@@ -74,6 +100,14 @@ class TestExportCsv(unittest.TestCase):
         self.assertEqual(lines[0], "position,action,task_id,title,priority,rationale")
         self.assertEqual(len(lines), 5)  # header + 4 items
         self.assertIn("Critical fix", csv_text)
+
+    def test_unknown_task_priority_blank(self):
+        plan = Plan(
+            load_report=LoadReport(score=80.0, level="overload"),
+            items=[PlanItem(position=1, action="do", task_id="ghost", title="Ghost")],
+        )
+        csv_text = export_tasks_csv(plan, _tasks())
+        self.assertIn("Ghost", csv_text)
 
 
 class TestAudit(unittest.TestCase):
@@ -107,6 +141,24 @@ class TestAudit(unittest.TestCase):
             record_approval("p1", "accepted", path=path)
             self.assertEqual(clear_audit(path), 1)
             self.assertEqual(load_audit(path), [])
+
+    def test_invalid_helpful_blanked(self):
+        record = record_approval("p1", "accepted", helpful="maybe")
+        self.assertEqual(record.helpful, "")
+
+    def test_load_audit_missing_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(load_audit(Path(tmp) / "nope.jsonl"), [])
+
+    def test_clear_audit_missing_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(clear_audit(Path(tmp) / "nope.jsonl"), 0)
+
+    def test_load_audit_skips_blank_and_comment_lines(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "audit.jsonl"
+            path.write_text('# comment\n\n{"plan_id": "p1"}\n', encoding="utf-8")
+            self.assertEqual(len(load_audit(path)), 1)
 
 
 if __name__ == "__main__":

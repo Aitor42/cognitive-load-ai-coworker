@@ -12,8 +12,14 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import capture_signals  # noqa: E402
-from loadguard.benchmark import run_benchmark, run_pilot_evaluation  # noqa: E402
-from loadguard.models import FOCUS_BLOCK, NOTIFICATION, Event  # noqa: E402
+from loadguard.benchmark import (  # noqa: E402
+    _estimate_eliminated,
+    _pct_reduction,
+    features_window,
+    run_benchmark,
+    run_pilot_evaluation,
+)
+from loadguard.models import FOCUS_BLOCK, NOTIFICATION, Event, FeatureSet  # noqa: E402
 from loadguard.sample_data import sample_tasks  # noqa: E402
 from loadguard.signals import load_events  # noqa: E402
 
@@ -35,6 +41,13 @@ class TestBenchmark(unittest.TestCase):
         b = run_benchmark(load_events(SAMPLE), sample_tasks())
         expected = round((b.reduction_points / b.before_score * 100), 1)
         self.assertAlmostEqual(b.reduction_pct, expected, places=1)
+
+    def test_unknown_event_kind_not_counted(self):
+        from types import SimpleNamespace
+
+        bogus = SimpleNamespace(timestamp=0.0, kind="bogus", duration_minutes=0.0)
+        b = run_benchmark([bogus], sample_tasks())
+        self.assertEqual(sum(b.signal_counts.values()), 0)
 
 
 class TestPilotEvaluation(unittest.TestCase):
@@ -66,6 +79,46 @@ class TestPilotEvaluation(unittest.TestCase):
     def test_acceptance_rate_passthrough(self):
         e = run_pilot_evaluation(load_events(SAMPLE), sample_tasks(), accepted_recommendations=0.78)
         self.assertEqual(e.acceptance_rate, 0.78)
+
+    def test_observed_notification_reduction_reported(self):
+        baseline = [
+            Event(timestamp=0.0, kind=FOCUS_BLOCK, duration_minutes=60.0),
+            Event(timestamp=100.0, kind=NOTIFICATION),
+            Event(timestamp=200.0, kind=NOTIFICATION),
+        ]
+        outcome = [
+            Event(timestamp=0.0, kind=FOCUS_BLOCK, duration_minutes=60.0),
+            Event(timestamp=300.0, kind=NOTIFICATION),
+        ]
+        e = run_pilot_evaluation(baseline, sample_tasks(), outcome_events=outcome)
+        self.assertTrue(e.has_observed)
+        self.assertIsNotNone(e.notification_reduction_pct)
+
+    def test_observed_without_baseline_focus_blocks(self):
+        baseline = [Event(timestamp=0.0, kind=NOTIFICATION)]
+        outcome = [Event(timestamp=0.0, kind=FOCUS_BLOCK, duration_minutes=30.0)]
+        e = run_pilot_evaluation(baseline, sample_tasks(), outcome_events=outcome)
+        self.assertTrue(e.has_observed)
+        self.assertIsNone(e.notification_reduction_pct)
+
+
+class TestHelpers(unittest.TestCase):
+    def test_features_window(self):
+        self.assertEqual(features_window([], None), 60.0)
+        self.assertEqual(features_window([], 30.0), 30.0)
+        events = [Event(timestamp=0.0, kind="meeting"), Event(timestamp=7200.0, kind="meeting")]
+        self.assertEqual(features_window(events, None), 120.0)
+
+    def test_estimate_eliminated(self):
+        f = FeatureSet(notification_rate=10.0, context_switches_per_hour=5.0)
+        self.assertEqual(_estimate_eliminated(f, {"batch": 1, "delegate": 1}, 2.0), 11)
+        self.assertEqual(_estimate_eliminated(f, {}, 2.0), 0)
+
+    def test_pct_reduction(self):
+        self.assertEqual(_pct_reduction(10.0, 5.0), 50.0)
+        self.assertIsNone(_pct_reduction(None, 5.0))
+        self.assertIsNone(_pct_reduction(10.0, None))
+        self.assertIsNone(_pct_reduction(0.0, 5.0))
 
 
 class TestCapture(unittest.TestCase):

@@ -65,6 +65,19 @@ class TestBaseline(unittest.TestCase):
         self.assertEqual(b.mean, 50.0)
         self.assertEqual(b.n, 2)
 
+    def test_compute_baseline_ignores_non_numeric_strings(self):
+        b = compute_baseline([40.0, "oops", 60.0])
+        self.assertIsNotNone(b)
+        self.assertEqual(b.mean, 50.0)
+        self.assertEqual(b.n, 2)
+
+    def test_trend_zero_std_uses_deviation(self):
+        b = compute_baseline([50.0, 50.0, 50.0])
+        self.assertEqual(b.std, 0.0)
+        self.assertEqual(trend(60.0, b).direction, "rising")
+        self.assertEqual(trend(40.0, b).direction, "falling")
+        self.assertEqual(trend(50.0, b).direction, "stable")
+
 
 class TestHistoryPersistence(unittest.TestCase):
     def test_roundtrip_and_clear(self):
@@ -81,6 +94,12 @@ class TestHistoryPersistence(unittest.TestCase):
             path = Path(tmp) / "missing.jsonl"
             self.assertEqual(load_history(path), [])
             self.assertEqual(clear_history(path), 0)
+
+    def test_load_history_ignores_invalid_lines(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "history.jsonl"
+            path.write_text("not_a_number\n# comment\n42\n", encoding="utf-8")
+            self.assertEqual(load_history(path), [42.0])
 
 
 if __name__ == "__main__":

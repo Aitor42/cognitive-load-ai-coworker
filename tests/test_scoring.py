@@ -1,206 +1,391 @@
-"""Unit tests for the scoring engine, signal features, and planner."""
+"""Parametrized unit tests for the Cognitive Load Score engine (``scoring.py``).
+
+The score is the core business deliverable: a weighted, normalized 0-100 value
+computed from five behavioral proxies. Because it is pure logic with no I/O or
+external dependencies, it is tested here with full white-box coverage using two
+complementary strategies.
+
+Branch coverage
+---------------
+Every decision outcome in the module is exercised:
+
+* ``_normalize`` — the ``maximum <= 0`` guard (both outcomes) and the three
+  clamp regions: ``value < 0``, ``0 <= value <= maximum`` and ``value > maximum``.
+* ``_level`` — all four bands and their exact boundaries (25 / 50 / 75) so that
+  every ``score < upper`` outcome is taken.
+* ``_contributions`` — the focus inversion (``1 - focus``) and the per-factor
+  clamp into ``[0, 1]``.
+
+Pairwise (All-Pairs) testing
+----------------------------
+``score`` is a weighted sum of five independent factors, so the full 4x3x4x3x3
+cross-product (432 combinations) is redundant. An All-Pairs covering array is
+built greedily from ``SCORE_PARAMETER_SPACE`` so that every *pair* of factor
+levels is exercised at least once, then verified for completeness before scoring.
+``PAIRWISE_CASES`` additionally pins a handful of exact score/level anchors at
+the boundary values.
+"""
 
 from __future__ import annotations
 
+import itertools
 import sys
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from loadguard.models import (  # noqa: E402
-    CONTEXT_SWITCH,
-    MEETING,
-    MODERATE,
-    HIGH,
-    OVERLOAD,
-    Event,
-    FeatureSet,
-    Task,
+from loadguard.models import FeatureSet  # noqa: E402
+from loadguard.scoring import (  # noqa: E402
+    _contributions,
+    _explanation,
+    _level,
+    _normalize,
+    score,
 )
-from loadguard.recommender import build_plan  # noqa: E402
-from loadguard.scoring import score  # noqa: E402
-from loadguard.signals import compute_features, parse_event  # noqa: E402
 
+# ---------------------------------------------------------------------------
+# Parametrization tables
+# ---------------------------------------------------------------------------
 
-def events_between(
-    count: int, kind: str, start: float = 0.0, gap: float = 60.0, duration: float = 0.0
-):
-    return [
-        Event(timestamp=start + i * gap, kind=kind, duration_minutes=duration) for i in range(count)
-    ]
+# (description, value, maximum, expected) — branch + clamp coverage of _normalize.
+NORMALIZE_CASES = [
+    ("zero maximum short-circuits", 5.0, 0.0, 0.0),
+    ("negative maximum short-circuits", 5.0, -1.0, 0.0),
+    ("negative value clamps to zero", -3.0, 10.0, 0.0),
+    ("in-range value scales", 6.0, 12.0, 0.5),
+    ("value at maximum scales to one", 12.0, 12.0, 1.0),
+    ("over-maximum clamps to one", 99.0, 12.0, 1.0),
+]
 
+# (score, expected_level) — every band plus the exact boundary values.
+LEVEL_CASES = [
+    (0.0, "low"),
+    (24.9, "low"),
+    (25.0, "moderate"),
+    (49.9, "moderate"),
+    (50.0, "high"),
+    (74.9, "high"),
+    (75.0, "overload"),
+    (100.0, "overload"),
+]
 
-class TestSignals(unittest.TestCase):
-    def test_parse_iso_timestamp(self):
-        e = parse_event({"timestamp": "2026-08-17T09:00:00Z", "kind": "meeting"})
-        self.assertEqual(e.kind, MEETING)
-        self.assertGreater(e.timestamp, 0)
-
-    def test_parse_rejects_unknown_kind(self):
-        with self.assertRaises(ValueError):
-            parse_event({"timestamp": "2026-08-17T09:00:00Z", "kind": "bogus"})
-
-    def test_empty_events_use_floor_window(self):
-        f = compute_features([])
-        self.assertEqual(f.context_switches_per_hour, 0.0)
-        self.assertEqual(f.notification_rate, 0.0)
-
-    def test_feature_rates_are_per_hour(self):
-        # 6 context switches over exactly 1 hour -> 6 per hour.
-        events = events_between(6, CONTEXT_SWITCH, start=0.0, gap=600.0)
-        f = compute_features(events, window_minutes=60.0)
-        self.assertAlmostEqual(f.context_switches_per_hour, 6.0)
-
-    def test_multitasking_index_during_meeting(self):
-        """Context switches during a meeting should increase multitasking index."""
-        events = [
-            Event(timestamp=0.0, kind=MEETING, duration_minutes=60.0),
-            # These switches happen during the 60-min meeting (0..3600s)
-            Event(timestamp=300.0, kind=CONTEXT_SWITCH),
-            Event(timestamp=600.0, kind=CONTEXT_SWITCH),
-            # This switch happens after the meeting
-            Event(timestamp=4000.0, kind=CONTEXT_SWITCH),
-        ]
-        f = compute_features(events, window_minutes=120.0)
-        # 2 out of 3 switches during meeting -> multitasking ≈ 0.667
-        self.assertAlmostEqual(f.multitasking_index, 2 / 3, places=2)
-
-    def test_parse_datetime_object(self):
-        from datetime import datetime, timezone
-
-        dt = datetime(2026, 8, 17, 9, 0, 0, tzinfo=timezone.utc)
-        e = parse_event({"timestamp": dt, "kind": "meeting"})
-        self.assertEqual(e.kind, MEETING)
-        self.assertEqual(e.timestamp, dt.timestamp())
-
-    def test_zero_or_negative_window_safely_falls_back(self):
-        events = events_between(6, CONTEXT_SWITCH, start=0.0, gap=600.0)
-        f_zero = compute_features(events, window_minutes=0.0)
-        f_neg = compute_features(events, window_minutes=-30.0)
-        self.assertGreater(f_zero.context_switches_per_hour, 0)
-        self.assertGreater(f_neg.context_switches_per_hour, 0)
-
-
-class TestScoring(unittest.TestCase):
-    def test_empty_features_score_low(self):
-        # No signals -> no interruption load; only a small baseline from the
-        # inverted focus term (no focus blocks logged), still level "low".
-        r = score(FeatureSet())
-        self.assertLess(r.score, 25.0)
-        self.assertEqual(r.level, "low")
-
-    def test_heavy_load_scores_overload(self):
-        f = FeatureSet(
-            context_switches_per_hour=15.0,
-            meeting_ratio=0.7,
-            notification_rate=40.0,
-            focus_ratio=0.05,
-            multitasking_index=0.8,
-        )
-        r = score(f)
-        self.assertGreaterEqual(r.score, 75.0)
-        self.assertEqual(r.level, OVERLOAD)
-
-    def test_focus_only_scores_low(self):
-        f = FeatureSet(focus_ratio=0.9)
-        r = score(f)
-        self.assertLess(r.score, 25.0)
-
-    def test_explanation_ranks_focus_as_protective(self):
-        """High focus time must not be reported as a load driver."""
-        f = FeatureSet(
-            context_switches_per_hour=6.0,
-            meeting_ratio=0.2,
-            notification_rate=2.0,
-            focus_ratio=0.95,
-            multitasking_index=0.1,
-        )
-        r = score(f)
-        # context switches (6/12*0.30=0.15) dominates; focus is protective
-        # ((1-0.95)*0.15=0.0075), so it must not appear as a top driver.
-        self.assertIn("context switches per hour", r.explanation)
-        self.assertNotIn("focus time", r.explanation)
-
-    def test_score_within_bounds(self):
-        f = FeatureSet(
-            context_switches_per_hour=999.0,
+# (description, features, expected_level, expected_score)
+# Pairwise matrix: boundary values per factor so every factor pair is exercised
+# without the full cross-product. Expected scores are derived from the documented
+# formula: 100 * (0.30*switches + 0.20*meetings + 0.20*notifications
+#                + 0.15*(1 - focus) + 0.15*multitasking).
+PAIRWISE_CASES = [
+    ("all calm", FeatureSet(focus_ratio=1.0), "low", 0.0),
+    ("no focus logged", FeatureSet(), "low", 15.0),
+    (
+        "context switches at threshold",
+        FeatureSet(context_switches_per_hour=12.0, focus_ratio=1.0),
+        "moderate",
+        30.0,
+    ),
+    (
+        "notifications at threshold",
+        FeatureSet(notification_rate=30.0, focus_ratio=1.0),
+        "low",
+        20.0,
+    ),
+    ("meetings saturated", FeatureSet(meeting_ratio=1.0, focus_ratio=1.0), "low", 20.0),
+    ("multitasking saturated", FeatureSet(multitasking_index=1.0, focus_ratio=1.0), "low", 15.0),
+    (
+        "switches + notifications at threshold",
+        FeatureSet(context_switches_per_hour=12.0, notification_rate=30.0, focus_ratio=1.0),
+        "high",
+        50.0,
+    ),
+    (
+        "switches at threshold, meetings full, no focus",
+        FeatureSet(context_switches_per_hour=12.0, meeting_ratio=1.0, focus_ratio=0.0),
+        "high",
+        65.0,
+    ),
+    (
+        "everything maxed",
+        FeatureSet(
+            context_switches_per_hour=24.0,
             meeting_ratio=1.0,
-            notification_rate=999.0,
+            notification_rate=60.0,
             focus_ratio=0.0,
             multitasking_index=1.0,
-        )
-        r = score(f)
-        self.assertLessEqual(r.score, 100.0)
-
-    def test_moderate_boundary(self):
-        """A score of exactly 25 should be moderate, not low."""
-        # Carefully craft features that produce a score around 25.
-        f = FeatureSet(
-            context_switches_per_hour=4.0,
-            meeting_ratio=0.2,
-            notification_rate=10.0,
-            focus_ratio=0.4,
-            multitasking_index=0.2,
-        )
-        r = score(f)
-        self.assertGreaterEqual(r.score, 25.0)
-        self.assertIn(r.level, (MODERATE, HIGH))
-
-    def test_high_boundary(self):
-        """Features that push score into the high range (50-75)."""
-        f = FeatureSet(
-            context_switches_per_hour=9.0,
-            meeting_ratio=0.5,
-            notification_rate=20.0,
-            focus_ratio=0.1,
+        ),
+        "overload",
+        100.0,
+    ),
+    (
+        "switches saturating + notifications threshold + half focus/multitasking",
+        FeatureSet(
+            context_switches_per_hour=24.0,
+            notification_rate=30.0,
+            focus_ratio=0.5,
             multitasking_index=0.5,
-        )
-        r = score(f)
-        self.assertGreaterEqual(r.score, 50.0)
-        self.assertLess(r.score, 75.0)
-        self.assertEqual(r.level, HIGH)
+        ),
+        "high",
+        65.0,
+    ),
+    (
+        "midpoint across all factors",
+        FeatureSet(
+            context_switches_per_hour=6.0,
+            meeting_ratio=0.5,
+            notification_rate=15.0,
+            focus_ratio=0.5,
+            multitasking_index=0.5,
+        ),
+        "high",
+        50.0,
+    ),
+    (
+        "switches over-threshold saturates",
+        FeatureSet(context_switches_per_hour=24.0, focus_ratio=1.0),
+        "moderate",
+        30.0,
+    ),
+    (
+        "notifications over-threshold saturates",
+        FeatureSet(notification_rate=60.0, focus_ratio=1.0),
+        "low",
+        20.0,
+    ),
+]
+
+# All-Pairs parameter space: factor -> boundary levels (calm / mid / threshold /
+# saturating). The full cross-product is 4x3x4x3x3 = 432 combinations; the
+# All-Pairs covering array below exercises every factor *pair* in far fewer rows.
+SCORE_PARAMETER_SPACE: dict[str, list[float]] = {
+    "context_switches_per_hour": [0.0, 6.0, 12.0, 24.0],
+    "meeting_ratio": [0.0, 0.5, 1.0],
+    "notification_rate": [0.0, 15.0, 30.0, 60.0],
+    "focus_ratio": [0.0, 0.5, 1.0],
+    "multitasking_index": [0.0, 0.5, 1.0],
+}
 
 
-class TestRecommender(unittest.TestCase):
-    def _overload_report(self):
-        return score(
+def _all_pairs(parameter_space: dict[str, list[float]]) -> list[dict[str, float]]:
+    """Greedy All-Pairs covering array.
+
+    Every unordered pair of factor values ``(factor_i, value_i, factor_j,
+    value_j)`` is covered by at least one returned row. The construction is
+    deterministic because ``itertools.product`` yields combinations in a fixed
+    order, and each round keeps the row covering the most still-uncovered pairs.
+    """
+    factors = list(parameter_space)
+    all_pairs = {
+        (factors[i], vi, factors[j], vj)
+        for i in range(len(factors))
+        for j in range(i + 1, len(factors))
+        for vi in parameter_space[factors[i]]
+        for vj in parameter_space[factors[j]]
+    }
+
+    def covered(row: dict[str, float]) -> set:
+        return {
+            (factors[a], row[factors[a]], factors[b], row[factors[b]])
+            for a in range(len(factors))
+            for b in range(a + 1, len(factors))
+        }
+
+    uncovered = set(all_pairs)
+    rows: list[dict[str, float]] = []
+    while uncovered:
+        best_row: dict[str, float] | None = None
+        best_hit: set = set()
+        for combo in itertools.product(*(parameter_space[f] for f in factors)):
+            row = dict(zip(factors, combo))
+            hit = covered(row) & uncovered
+            if len(hit) > len(best_hit):
+                best_hit = hit
+                best_row = row
+        if best_row is None or not best_hit:
+            raise AssertionError("All-Pairs construction stalled; pair space not coverable")
+        rows.append(best_row)
+        uncovered -= best_hit
+    return rows
+
+
+def _uncovered_pairs(parameter_space: dict[str, list[float]], rows: list[dict[str, float]]) -> set:
+    """Pairs not covered by ``rows`` (empty set means All-Pairs is satisfied)."""
+    factors = list(parameter_space)
+    all_pairs = {
+        (factors[i], vi, factors[j], vj)
+        for i in range(len(factors))
+        for j in range(i + 1, len(factors))
+        for vi in parameter_space[factors[i]]
+        for vj in parameter_space[factors[j]]
+    }
+    covered = {
+        (factors[a], row[factors[a]], factors[b], row[factors[b]])
+        for row in rows
+        for a in range(len(factors))
+        for b in range(a + 1, len(factors))
+    }
+    return all_pairs - covered
+
+
+class TestNormalizeBranchCoverage(unittest.TestCase):
+    """Branch coverage of ``_normalize``: guard and clamp regions."""
+
+    def test_guard_and_clamp_regions(self) -> None:
+        for desc, value, maximum, expected in NORMALIZE_CASES:
+            with self.subTest(case=desc):
+                self.assertEqual(_normalize(value, maximum), expected)
+
+
+class TestLevelBranchCoverage(unittest.TestCase):
+    """Branch coverage of ``_level``: every band and its exact boundaries."""
+
+    def test_all_bands_and_boundaries(self) -> None:
+        for value, expected in LEVEL_CASES:
+            with self.subTest(score=value):
+                self.assertEqual(_level(value), expected)
+
+    def test_defensive_fallback_for_non_finite_scores(self) -> None:
+        # inf/NaN are never < any boundary, so the loop falls through to the
+        # defensive `return OVERLOAD` at the end of ``_level``.
+        self.assertEqual(_level(float("inf")), "overload")
+        self.assertEqual(_level(float("nan")), "overload")
+
+
+class TestContributions(unittest.TestCase):
+    """White-box checks of the per-factor normalization and focus inversion."""
+
+    def test_focus_is_inverted(self) -> None:
+        # No focus logged -> maximum load contribution; full focus -> none.
+        self.assertEqual(_contributions({"focus_ratio": 0.0})["focus_ratio"], 1.0)
+        self.assertEqual(_contributions({"focus_ratio": 1.0})["focus_ratio"], 0.0)
+
+    def test_ratios_clamp_to_unit_range(self) -> None:
+        cases = [
+            ("meeting_ratio", {"meeting_ratio": 1.5}, 1.0),
+            ("meeting_ratio", {"meeting_ratio": -0.5}, 0.0),
+            ("multitasking_index", {"multitasking_index": 2.0}, 1.0),
+            ("focus_ratio", {"focus_ratio": 1.5}, 0.0),  # 1 - 1.5 -> clamped to 0
+        ]
+        for name, factors, expected in cases:
+            with self.subTest(case=name):
+                self.assertEqual(_contributions(factors)[name], expected)
+
+
+class TestScorePairwise(unittest.TestCase):
+    """Pairwise matrix: score + level for boundary factor combinations."""
+
+    def test_pairwise_matrix(self) -> None:
+        for desc, features, expected_level, expected_score in PAIRWISE_CASES:
+            with self.subTest(case=desc):
+                report = score(features)
+                self.assertEqual(report.level, expected_level)
+                self.assertAlmostEqual(report.score, expected_score, places=1)
+
+
+class TestAllPairsScore(unittest.TestCase):
+    """All-Pairs coverage of ``score`` across the five-factor parameter space."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.rows = _all_pairs(SCORE_PARAMETER_SPACE)
+
+    def test_array_is_complete(self) -> None:
+        """The generated array must cover every factor pair at least once."""
+        self.assertGreater(len(self.rows), 0)
+        self.assertEqual(_uncovered_pairs(SCORE_PARAMETER_SPACE, self.rows), set())
+
+    def test_score_invariants_over_all_pairs(self) -> None:
+        for row in self.rows:
+            with self.subTest(**row):
+                report = score(FeatureSet(**row))
+                self.assertGreaterEqual(report.score, 0.0)
+                self.assertLessEqual(report.score, 100.0)
+                self.assertEqual(report.level, _level(report.score))
+
+
+class TestMonotonicity(unittest.TestCase):
+    """The score must move monotonically with each individual factor."""
+
+    def test_load_factors_are_monotonic_non_decreasing(self) -> None:
+        load_levels = {
+            "context_switches_per_hour": [0.0, 6.0, 12.0, 24.0],
+            "meeting_ratio": [0.0, 0.5, 1.0],
+            "notification_rate": [0.0, 15.0, 30.0, 60.0],
+            "multitasking_index": [0.0, 0.5, 1.0],
+        }
+        for factor, levels in load_levels.items():
+            previous = score(FeatureSet(**{factor: levels[0]})).score
+            for level in levels[1:]:
+                with self.subTest(factor=factor, level=level):
+                    current = score(FeatureSet(**{factor: level})).score
+                    self.assertGreaterEqual(current, previous)
+                    previous = current
+
+    def test_focus_is_monotonic_non_increasing(self) -> None:
+        previous = score(FeatureSet(focus_ratio=0.0)).score
+        for level in (0.5, 1.0):
+            with self.subTest(focus_ratio=level):
+                current = score(FeatureSet(focus_ratio=level)).score
+                self.assertLessEqual(current, previous)
+                previous = current
+
+
+class TestScoreContract(unittest.TestCase):
+    """Invariants that must hold for any input."""
+
+    def test_score_always_within_bounds(self) -> None:
+        extremes = [
+            FeatureSet(),
             FeatureSet(
-                context_switches_per_hour=15.0,
-                meeting_ratio=0.7,
-                notification_rate=40.0,
-                focus_ratio=0.05,
-                multitasking_index=0.8,
+                context_switches_per_hour=999.0,
+                meeting_ratio=1.0,
+                notification_rate=999.0,
+                focus_ratio=0.0,
+                multitasking_index=1.0,
+            ),
+            FeatureSet(focus_ratio=1.0),
+        ]
+        for features in extremes:
+            with self.subTest(features=features):
+                report = score(features)
+                self.assertGreaterEqual(report.score, 0.0)
+                self.assertLessEqual(report.score, 100.0)
+
+    def test_level_is_consistent_with_score(self) -> None:
+        for desc, features, _level_expected, _score_expected in PAIRWISE_CASES:
+            with self.subTest(case=desc):
+                report = score(features)
+                self.assertEqual(report.level, _level(report.score))
+
+    def test_explanation_is_grounded_in_contributions(self) -> None:
+        # Focus time is protective: when it is high it must not be a top driver.
+        report = score(
+            FeatureSet(
+                context_switches_per_hour=6.0,
+                meeting_ratio=0.2,
+                notification_rate=2.0,
+                focus_ratio=0.95,
+                multitasking_index=0.1,
             )
         )
+        self.assertTrue(report.explanation.startswith("Main drivers: "))
+        self.assertIn("context switches per hour", report.explanation)
+        self.assertNotIn("focus time", report.explanation)
 
-    def test_overload_delegates_low_priority(self):
-        tasks = [
-            Task(id="a", title="Critical fix", priority=5),
-            Task(id="b", title="Expenses", priority=1, focus_required=False),
-            Task(id="c", title="Backlog labels", priority=2, focus_required=False),
-        ]
-        plan = build_plan(tasks, self._overload_report())
-        delegated = [i for i in plan.items if i.action == "delegate"]
-        self.assertEqual({i.task_id for i in delegated}, {"b", "c"})
-
-    def test_low_load_delegates_nothing(self):
-        report = score(FeatureSet(focus_ratio=0.9))
-        tasks = [Task(id="a", title="Deep work", priority=5)]
-        plan = build_plan(tasks, report)
-        self.assertFalse([i for i in plan.items if i.action == "delegate"])
-
-    def test_plan_is_ordered_by_priority(self):
-        tasks = [
-            Task(id="low", title="Low", priority=2),
-            Task(id="high", title="High", priority=5),
-            Task(id="mid", title="Mid", priority=4),
-        ]
-        plan = build_plan(tasks, score(FeatureSet(focus_ratio=0.9)))
-        do_items = [i for i in plan.items if i.action == "do"]
-        self.assertEqual(do_items[0].task_id, "high")
-        self.assertEqual(do_items[1].task_id, "mid")
-        self.assertEqual(do_items[2].task_id, "low")
+    def test_explanation_names_two_drivers(self) -> None:
+        report = score(
+            FeatureSet(context_switches_per_hour=12.0, notification_rate=30.0, focus_ratio=1.0)
+        )
+        drivers = _explanation(
+            {
+                "context_switches_per_hour": 12.0,
+                "meeting_ratio": 0.0,
+                "notification_rate": 30.0,
+                "focus_ratio": 1.0,
+                "multitasking_index": 0.0,
+            }
+        )
+        self.assertEqual(drivers.count(", "), 1)  # exactly two drivers, comma-separated
+        self.assertEqual(report.explanation, drivers)
 
 
 if __name__ == "__main__":

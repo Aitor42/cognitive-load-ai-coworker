@@ -29,14 +29,14 @@ from loadguard.actions import (  # noqa: E402
     record_approval,
 )
 from loadguard.benchmark import run_benchmark, run_pilot_evaluation  # noqa: E402
-from loadguard.models import Task  # noqa: E402
+from loadguard.models import Event, Task  # noqa: E402
 from loadguard.sample_data import sample_tasks  # noqa: E402
 from loadguard.scoring import score  # noqa: E402
 from loadguard.signals import compute_features, load_events, parse_event  # noqa: E402
 from loadguard.workflow import run_workflow  # noqa: E402
 
 
-def _to_events(payload):
+def _to_events(payload: list[Any]) -> list[Event]:
     return [parse_event(e) if isinstance(e, dict) else e for e in payload]
 
 
@@ -54,7 +54,7 @@ def _parse_bool(val: Any, default: bool = True) -> bool:
     return bool(val)
 
 
-def _to_tasks(payload):
+def _to_tasks(payload: list[dict[str, Any]]) -> list[Task]:
     return [
         Task(
             id=str(t.get("id", i)),
@@ -107,7 +107,7 @@ def propose_plan(events: list[dict], tasks: list[dict], history: list[float] | N
             "features": asdict(result.features),
             "load_report": asdict(result.load_report),
             "proposal": asdict(result.proposal) if result.proposal else None,
-            "guardian": asdict(result.guardian),
+            "guardian": asdict(result.guardian) if result.guardian else None,
             "trend": asdict(result.trend) if result.trend else None,
             "plan": asdict(result.plan),
             "impact": asdict(result.impact),

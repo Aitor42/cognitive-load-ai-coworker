@@ -48,4 +48,4 @@ jobs:
       - name: Install mypy
         run: pip install mypy
       - name: Type check
-        run: mypy src
+        run: mypy src mcp_server app.py

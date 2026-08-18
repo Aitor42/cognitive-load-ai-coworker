@@ -27,6 +27,7 @@ from .models import (
     MEETING,
     NOTIFICATION,
     Event,
+    FeatureSet,
     Task,
 )
 from .signals import compute_features
@@ -105,7 +106,9 @@ def features_window(events: list[Event], window_minutes: float | None) -> float:
     return max((max(e.timestamp for e in events) - min(e.timestamp for e in events)) / 60.0, 60.0)
 
 
-def _estimate_eliminated(features, plan_counts: dict[str, int], window_hours: float) -> int:
+def _estimate_eliminated(
+    features: FeatureSet, plan_counts: dict[str, int], window_hours: float
+) -> int:
     """Estimate the number of interruptions removed by following the plan."""
     eliminated = 0.0
     if plan_counts.get("batch", 0) > 0:
@@ -129,7 +132,7 @@ class PhaseMetrics:
     """One phase of the pilot evaluation."""
 
     label: str  # baseline | projected | observed
-    score: float | None
+    score: float
     level: str
     metrics: dict[str, float] = field(default_factory=dict)
 
@@ -219,9 +222,10 @@ def run_pilot_evaluation(
     )
 
     observed: PhaseMetrics | None = None
-    has_observed = bool(outcome_events)
-    if has_observed:
-        obs_features = compute_features(outcome_events, window_minutes)
+    outcome = outcome_events
+    has_observed = bool(outcome)
+    if outcome:
+        obs_features = compute_features(outcome, window_minutes)
         obs = score(obs_features)
         observed = PhaseMetrics(
             label="observed",
@@ -239,21 +243,21 @@ def run_pilot_evaluation(
     # Focus-window interruption metrics (baseline vs observed).
     b_focus_min, b_notif = _notifications_in_focus(events)
     o_focus_min, o_notif = (0.0, 0.0)
-    if has_observed:
-        o_focus_min, o_notif = _notifications_in_focus(outcome_events)
+    if outcome:
+        o_focus_min, o_notif = _notifications_in_focus(outcome)
     b_focus_rate = (b_notif / (b_focus_min / 60.0)) if b_focus_min > 0 else None
     o_focus_rate = (o_notif / (o_focus_min / 60.0)) if o_focus_min > 0 else None
-    notification_reduction = _pct_reduction(b_focus_rate, o_focus_rate) if has_observed else None
+    notification_reduction = _pct_reduction(b_focus_rate, o_focus_rate) if outcome else None
 
     context_reduction = (
         _pct_reduction(
             _per_hour(events, CONTEXT_SWITCH),
-            _per_hour(outcome_events, CONTEXT_SWITCH),
+            _per_hour(outcome, CONTEXT_SWITCH),
         )
-        if has_observed
+        if outcome
         else None
     )
-    focus_gained = (o_focus_min - b_focus_min) if has_observed else None
+    focus_gained = (o_focus_min - b_focus_min) if outcome else None
 
     done = [t for t in tasks if t.status == DONE]
     priority_done = [t for t in done if t.priority >= 4]

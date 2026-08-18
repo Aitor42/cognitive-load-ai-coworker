@@ -29,10 +29,10 @@ from .actions import (
 from .baseline import append_score, clear_history, load_history
 from .config import get_guardian_model, get_model
 from .guardian import validate_plan
-from .models import PlanItem, Task
+from .models import LoadReport, Plan, PlanItem, Task
 from .sample_data import sample_tasks
 from .signals import load_events, parse_event
-from .workflow import run_workflow
+from .workflow import WorkflowResult, run_workflow
 
 app = FastAPI(
     title="LoadGuard",
@@ -104,7 +104,7 @@ def _to_tasks(payload: list[dict[str, Any]]) -> list[Task]:
     ]
 
 
-def _store_plan(result, tasks: list[Task], events: list[Any]) -> dict[str, Any]:
+def _store_plan(result: WorkflowResult, tasks: list[Task], events: list[Any]) -> dict[str, Any]:
     payload = asdict(result)
     plan_id = result.plan.plan_id
     PLANS[plan_id] = {"payload": payload, "tasks": [asdict(t) for t in tasks], "events": events}
@@ -295,10 +295,8 @@ def privacy() -> dict[str, Any]:
     }
 
 
-def _plan_from_payload(payload: dict[str, Any]):
+def _plan_from_payload(payload: dict[str, Any]) -> Plan:
     """Rebuild a Plan object from a stored asdict payload."""
-    from .models import LoadReport, Plan, PlanItem
-
     lr = payload["load_report"]
     load_report = LoadReport(
         score=lr["score"],

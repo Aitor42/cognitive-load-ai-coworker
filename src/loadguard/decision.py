@@ -59,7 +59,7 @@ class ProposalValidation:
     reasons: list[str] = field(default_factory=list)
 
 
-def parse_proposal(raw_text: str) -> DecisionProposal | None:
+def parse_proposal(raw_text: str | None) -> DecisionProposal | None:
     """Parse the LLM's JSON proposal; return None if it is not valid JSON."""
     if not raw_text:
         return None

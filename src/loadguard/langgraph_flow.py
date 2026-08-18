@@ -18,7 +18,7 @@ so the core pipeline keeps its zero-dependency guarantee.
 from __future__ import annotations
 
 from dataclasses import asdict
-from typing import Any, TypedDict
+from typing import Any, Mapping, TypedDict
 
 from .actions import export_ics, export_tasks_csv, new_plan_id
 from .agents import (
@@ -66,22 +66,22 @@ class WorkflowState(TypedDict, total=False):
 # ---------------------------------------------------------------------------
 
 
-def collect_signals(state: WorkflowState) -> dict[str, Any]:
+def collect_signals(state: Mapping[str, Any]) -> dict[str, Any]:
     """Entry point: events and tasks are already parsed by the caller."""
     return {"status": "signals_collected"}
 
 
-def compute_features(state: WorkflowState) -> dict[str, Any]:
+def compute_features(state: Mapping[str, Any]) -> dict[str, Any]:
     features = SignalAnalystAgent().run(state["events"], state.get("window_minutes"))
     return {"features": features}
 
 
-def diagnose_load(state: WorkflowState) -> dict[str, Any]:
+def diagnose_load(state: Mapping[str, Any]) -> dict[str, Any]:
     load_report = LoadDiagnosticianAgent().run(state["features"])
     return {"load_report": load_report}
 
 
-def granite_plan(state: WorkflowState) -> dict[str, Any]:
+def granite_plan(state: Mapping[str, Any]) -> dict[str, Any]:
     """Deterministic baseline plan + Granite proposal (gated) + merge."""
     load_report = state["load_report"]
     tasks = state["tasks"]
@@ -95,7 +95,7 @@ def granite_plan(state: WorkflowState) -> dict[str, Any]:
     return {"base_plan": base_plan, "proposal": proposal, "plan": plan}
 
 
-def guardian_validation(state: WorkflowState) -> dict[str, Any]:
+def guardian_validation(state: Mapping[str, Any]) -> dict[str, Any]:
     """Narrative + Granite Guardian / deterministic safety gate."""
     plan = state["plan"]
     tasks = state["tasks"]
@@ -107,7 +107,7 @@ def guardian_validation(state: WorkflowState) -> dict[str, Any]:
     return {"plan": plan, "guardian": guardian}
 
 
-def human_approval(state: WorkflowState) -> dict[str, Any]:
+def human_approval(state: Mapping[str, Any]) -> dict[str, Any]:
     """Explicit human approval gate; the flow stops here without a decision."""
     approval = state.get("approval")
     if not approval or not approval.get("decision"):
@@ -117,7 +117,7 @@ def human_approval(state: WorkflowState) -> dict[str, Any]:
     return {"plan": state["plan"], "status": decision}
 
 
-def apply_plan(state: WorkflowState) -> dict[str, Any]:
+def apply_plan(state: Mapping[str, Any]) -> dict[str, Any]:
     """Act: export the protected calendar blocks and the resequenced tasks."""
     if state.get("status") != "accepted":
         return {"exports": {}}
@@ -132,7 +132,7 @@ def apply_plan(state: WorkflowState) -> dict[str, Any]:
     }
 
 
-def measure_outcome(state: WorkflowState) -> dict[str, Any]:
+def measure_outcome(state: Mapping[str, Any]) -> dict[str, Any]:
     """Projected impact, plus observed metrics when outcome events exist."""
     features = state["features"]
     plan = state["plan"]
@@ -159,7 +159,7 @@ def _approval_router(state: WorkflowState) -> str:
     return state.get("status", "awaiting_approval")
 
 
-def build_graph():
+def build_graph() -> Any:
     """Compile the LangGraph StateGraph (requires ``langgraph`` installed)."""
     from langgraph.graph import END, StateGraph
 

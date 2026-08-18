@@ -51,6 +51,12 @@ class TestParseProposal(unittest.TestCase):
         self.assertIsNone(parse_proposal(""))
         self.assertIsNone(parse_proposal('{"broken": '))
 
+    def test_parse_non_list_fields_ignored(self):
+        p = parse_proposal('{"delegate_task_ids": "c", "inserts": {"action": "break"}}')
+        self.assertIsNotNone(p)
+        self.assertEqual(p.delegate_task_ids, [])
+        self.assertEqual(p.inserts, [])
+
 
 class TestValidateProposal(unittest.TestCase):
     def setUp(self):

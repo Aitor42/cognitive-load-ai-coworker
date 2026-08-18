@@ -77,6 +77,10 @@ def parse_proposal(raw_text: str) -> DecisionProposal | None:
     priority = data.get("priority_task_id")
     delegates = data.get("delegate_task_ids", []) or []
     raw_inserts = data.get("inserts", []) or []
+    if not isinstance(delegates, list):
+        delegates = []
+    if not isinstance(raw_inserts, list):
+        raw_inserts = []
 
     inserts: list[InsertAction] = []
     for item in raw_inserts:

@@ -46,6 +46,13 @@ MEDICAL_PHRASES = [
 # software task title) are NOT flagged as medical diagnoses.
 MEDICAL_TERMS_RE = re.compile(r"\bdiagnos(?:e|is|ed|ing)\b", re.IGNORECASE)
 
+# Negation words that mark a "diagnos*" mention as the system's own disclaimer
+# (e.g. "LoadGuard does not diagnose medical conditions") rather than a diagnosis.
+NEGATION_RE = re.compile(
+    r"\b(?:not|no|never|without|doesn't|don't|cannot|can't|won't|shouldn't)\b",
+    re.IGNORECASE,
+)
+
 # Demeaning / disrespectful language.
 RESPECT_VIOLATIONS = [
     "idiot",
@@ -119,11 +126,19 @@ def _scan_regex(text: str, patterns: list[re.Pattern], name: str) -> GuardCheck:
 
 
 def _scan_medical(text: str) -> GuardCheck:
-    """Check for medical/burnout *diagnosis*, not benign technical wording."""
+    """Check for medical/burnout *diagnosis*, not benign technical wording.
+
+    A "diagnos*" term is ignored when it appears in a clearly negated context
+    (e.g. "LoadGuard does not diagnose medical conditions"), which is the
+    system's own disclaimer rather than a diagnosis of the user.
+    """
     lowered = text.lower()
     hits = {p for p in MEDICAL_PHRASES if p in lowered}
-    if MEDICAL_TERMS_RE.search(text):
-        hits.add("diagnos*")
+    for match in MEDICAL_TERMS_RE.finditer(text):
+        before = text[max(0, match.start() - 40) : match.start()]
+        if not NEGATION_RE.search(before):
+            hits.add("diagnos*")
+            break
     return GuardCheck(
         name="no_medical_diagnosis",
         passed=not hits,

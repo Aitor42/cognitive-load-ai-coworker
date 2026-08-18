@@ -110,6 +110,15 @@ class TestGuardian(unittest.TestCase):
         self.assertFalse(result.passed)
         self.assertIn("no_medical_diagnosis", [c.name for c in result.checks if not c.passed])
 
+    def test_negated_diagnose_not_flagged(self):
+        tasks = [_task("a")]
+        plan = _plan(
+            [PlanItem(position=1, action="do", task_id="a", title="Task a")],
+            note="LoadGuard does not diagnose medical conditions.",
+        )
+        result = validate_plan(plan, tasks, plan.note)
+        self.assertTrue(result.passed, result.summary())
+
 
 if __name__ == "__main__":
     unittest.main()

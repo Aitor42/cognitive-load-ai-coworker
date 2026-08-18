@@ -19,6 +19,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 from pydantic import BaseModel, Field
 
 from .actions import (
+    APPROVAL_DECISIONS,
     clear_audit,
     export_ics,
     export_tasks_csv,
@@ -180,17 +181,18 @@ def approve(req: ApproveRequest) -> dict[str, Any]:
                 detail=f"edited plan failed the safety gate: {guard.summary()}",
             )
         stored["payload"]["plan"]["items"] = cleaned
+    decision = req.decision if req.decision in APPROVAL_DECISIONS else "rejected"
     record = record_approval(
         req.plan_id,
-        req.decision,
+        decision,
         feedback=req.feedback,
         helpful=req.helpful or "",
         path=AUDIT_PATH,
     )
-    stored["payload"]["plan"]["status"] = req.decision
+    stored["payload"]["plan"]["status"] = decision
     return {
         "plan_id": req.plan_id,
-        "status": req.decision,
+        "status": decision,
         "audit": record.__dict__,
     }
 

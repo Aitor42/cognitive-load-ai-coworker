@@ -1,0 +1,51 @@
+%% LoadGuard system architecture (renders natively in GitHub Markdown).
+flowchart TB
+    subgraph Inputs["Signal Sources (privacy-preserving)"]
+        JSONL["JSONL events<br/>demo/sample_events.jsonl"]
+        REST["REST API<br/>POST /analyze"]
+        ADAPT["Adapters<br/>calendar / notifications / OS focus"]
+    end
+
+    subgraph Agents["Multi-Agent Pipeline"]
+        SA["SignalAnalyst Agent<br/>signals.py → FeatureSet"]
+        LD["LoadDiagnostician Agent<br/>scoring.py → LoadReport (0-100)"]
+        WP["WorkloadPlanner Agent<br/>recommender.py → deterministic baseline plan"]
+        DA["Granite Decision Agent<br/>decision.py → structured proposal"]
+        GATE["Deterministic validator<br/>decision.validate_proposal"]
+        NA["Narrator Agent<br/>llm.py → human note"]
+    end
+
+    GUARD["Granite Guardian / deterministic guard<br/>guardian.py → safety gate"]
+    HUMAN["Human approval<br/>accept / edit / reject"]
+    ACT["Apply plan<br/>actions.py → .ics calendar + task CSV"]
+    IMP["Impact Estimator<br/>impact.py → before/after score"]
+    MEAS["Pilot evaluation<br/>benchmark.py → baseline / projected / observed"]
+
+    subgraph LLM["IBM Technology"]
+        GRANITE["IBM Granite 3 (8B Instruct)<br/>watsonx / Ollama"]
+        GUARDIAN["IBM Granite Guardian 3<br/>safety guardrail"]
+    end
+
+    subgraph ORCH["Orchestration"]
+        LG["LangGraph StateGraph<br/>langgraph_flow.py<br/>(checkpoints + human-approval node)"]
+    end
+
+    JSONL --> SA
+    REST --> SA
+    ADAPT --> SA
+    SA --> LD
+    LD --> WP
+    WP --> DA
+    DA --> GATE
+    GATE --> NA
+    NA --> GUARD
+    GUARD --> HUMAN
+    HUMAN -->|accepted| ACT
+    HUMAN -->|rejected| OUT_REJ["No changes applied"]
+    ACT --> IMP
+    IMP --> MEAS
+    MEAS --> OUT["Observed impact<br/>or honest projection"]
+    GRANITE -.-> NA
+    GRANITE -.-> DA
+    GUARDIAN -.-> GUARD
+    LG -.-> Agents

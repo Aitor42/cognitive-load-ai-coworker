@@ -16,7 +16,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
-        run: pip install ".[dev]"
+        run: pip install ".[api,dev]"
       - name: Run unit tests with branch coverage
         env:
           PYTHONPATH: src

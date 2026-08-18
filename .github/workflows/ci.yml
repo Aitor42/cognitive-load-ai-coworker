@@ -15,10 +15,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Run unit tests
+      - name: Install dependencies
+        run: pip install ".[dev]"
+      - name: Run unit tests with branch coverage
         env:
           PYTHONPATH: src
-        run: python -m unittest discover -s tests -v
+        run: |
+          coverage run --branch --source=src/loadguard -m unittest discover -s tests -v
+          coverage report --fail-under=100
 
   lint:
     runs-on: ubuntu-latest
@@ -30,6 +34,18 @@ jobs:
       - name: Install ruff
         run: pip install ruff
       - name: Lint
-        run: ruff check src tests demo scripts app.py
+        run: ruff check src tests demo scripts app.py mcp_server
       - name: Check formatting
-        run: ruff format --check src tests demo scripts app.py
+        run: ruff format --check src tests demo scripts app.py mcp_server
+
+  types:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install mypy
+        run: pip install mypy
+      - name: Type check
+        run: mypy src

@@ -1,0 +1,127 @@
+"""Tests for the benchmark module and the signal-capture script."""
+
+from __future__ import annotations
+
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "scripts"))
+
+import capture_signals  # noqa: E402
+from loadguard.benchmark import run_benchmark, run_pilot_evaluation  # noqa: E402
+from loadguard.models import FOCUS_BLOCK, NOTIFICATION, Event  # noqa: E402
+from loadguard.sample_data import sample_tasks  # noqa: E402
+from loadguard.signals import load_events  # noqa: E402
+
+SAMPLE = ROOT / "demo" / "sample_events.jsonl"
+
+
+class TestBenchmark(unittest.TestCase):
+    def test_metrics_are_consistent(self):
+        b = run_benchmark(load_events(SAMPLE), sample_tasks())
+        self.assertGreater(b.n_events, 0)
+        self.assertGreaterEqual(b.reduction_points, 0.0)
+        self.assertLessEqual(b.after_score, b.before_score)
+        self.assertTrue(b.plan_counts)
+        self.assertGreaterEqual(b.reduction_pct, 0.0)
+        # signal counts sum to total events
+        self.assertEqual(sum(b.signal_counts.values()), b.n_events)
+
+    def test_reduction_pct_formula(self):
+        b = run_benchmark(load_events(SAMPLE), sample_tasks())
+        expected = round((b.reduction_points / b.before_score * 100), 1)
+        self.assertAlmostEqual(b.reduction_pct, expected, places=1)
+
+
+class TestPilotEvaluation(unittest.TestCase):
+    def test_no_outcome_is_honest_projection(self):
+        e = run_pilot_evaluation(load_events(SAMPLE), sample_tasks())
+        self.assertFalse(e.has_observed)
+        self.assertIsNone(e.observed)
+        self.assertIsNone(e.notification_reduction_pct)
+        self.assertIn("projection", e.summary)
+
+    def test_observed_outcome_measured(self):
+        baseline = load_events(SAMPLE)
+        # Outcome: same meetings, but focus protected and notifications reduced.
+        outcome = [
+            Event(timestamp=0.0, kind="meeting", duration_minutes=60.0),
+            Event(timestamp=3600.0, kind="meeting", duration_minutes=30.0),
+            Event(timestamp=7200.0, kind="meeting", duration_minutes=45.0),
+            Event(timestamp=9000.0, kind=FOCUS_BLOCK, duration_minutes=60.0),
+        ]
+        outcome += [Event(timestamp=9060.0 + i, kind=NOTIFICATION) for i in range(0, 600, 120)]
+        e = run_pilot_evaluation(baseline, sample_tasks(), outcome_events=outcome)
+        self.assertTrue(e.has_observed)
+        self.assertIsNotNone(e.observed)
+        self.assertIsNotNone(e.load_delta)
+        self.assertIsNotNone(e.focus_minutes_gained)
+        self.assertGreaterEqual(e.focus_minutes_gained, 0)
+        self.assertGreaterEqual(e.observed.score, 0)
+
+    def test_acceptance_rate_passthrough(self):
+        e = run_pilot_evaluation(load_events(SAMPLE), sample_tasks(), accepted_recommendations=0.78)
+        self.assertEqual(e.acceptance_rate, 0.78)
+
+
+class TestCapture(unittest.TestCase):
+    def test_parse_ics(self):
+        events = capture_signals.parse_ics(ROOT / "scripts" / "sample_calendar.ics")
+        self.assertEqual(len(events), 3)
+        self.assertTrue(all(e.kind == "meeting" for e in events))
+        # DTSTART + DTEND -> 60 minutes
+        self.assertEqual(events[0].duration_minutes, 60.0)
+        # DTSTART + DURATION:PT45M -> 45 minutes
+        self.assertEqual(events[2].duration_minutes, 45.0)
+
+    def test_parse_notifications(self):
+        with tempfile.NamedTemporaryFile("w", suffix=".log", delete=False) as fh:
+            fh.write("2026-08-17T09:02:00Z slack\n")
+            fh.write("2026-08-17T09:08:00Z ai_assistant\n")
+            path = Path(fh.name)
+        try:
+            events = capture_signals.parse_notifications(path)
+            self.assertEqual(len(events), 2)
+            self.assertEqual(events[0].meta["source"], "slack")
+            self.assertEqual(events[1].kind, "notification")
+        finally:
+            path.unlink()
+
+    def test_parse_duration_full(self):
+        """PT1H30M should be 90 minutes."""
+        self.assertAlmostEqual(capture_signals._parse_duration("PT1H30M"), 90.0)
+
+    def test_parse_duration_minutes_only(self):
+        """PT45M should be 45 minutes."""
+        self.assertAlmostEqual(capture_signals._parse_duration("PT45M"), 45.0)
+
+    def test_parse_duration_empty_pt(self):
+        """PT with no components should fall back to 60 minutes."""
+        self.assertAlmostEqual(capture_signals._parse_duration("PT"), 60.0)
+
+    def test_parse_duration_invalid(self):
+        """Non-duration string should fall back to 60 minutes."""
+        self.assertAlmostEqual(capture_signals._parse_duration("invalid"), 60.0)
+
+    def test_parse_focus(self):
+        """Focus log parsing should produce focus_block events."""
+        with tempfile.NamedTemporaryFile("w", suffix=".log", delete=False) as fh:
+            fh.write("2026-08-17T10:00:00Z 25 Deep work\n")
+            fh.write("2026-08-17T11:00:00Z 30\n")
+            path = Path(fh.name)
+        try:
+            events = capture_signals.parse_focus(path)
+            self.assertEqual(len(events), 2)
+            self.assertEqual(events[0].kind, "focus_block")
+            self.assertAlmostEqual(events[0].duration_minutes, 25.0)
+            self.assertAlmostEqual(events[1].duration_minutes, 30.0)
+        finally:
+            path.unlink()
+
+
+if __name__ == "__main__":
+    unittest.main()

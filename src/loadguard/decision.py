@@ -210,11 +210,7 @@ def merge_proposal(
     # 1) Prioritize a task: move it to the front of the "do" queue.
     if proposal.priority_task_id:
         idx = next(
-            (
-                i
-                for i, it in enumerate(items)
-                if it.task_id == proposal.priority_task_id
-            ),
+            (i for i, it in enumerate(items) if it.task_id == proposal.priority_task_id),
             None,
         )
         if idx is not None:

@@ -92,7 +92,6 @@ class TestValidateProposal(unittest.TestCase):
         v = validate_proposal(p, self.tasks, _report())
         self.assertFalse(v.valid)
 
-
     def test_priority_3_task_can_be_delegated(self):
         tasks = [Task(id="p3", title="Medium task", priority=3)]
         p = DecisionProposal(delegate_task_ids=["p3"])

@@ -56,7 +56,12 @@ def _ics_escape(text: str) -> str:
     if not text:
         return ""
     normalized = text.replace("\r\n", "\n").replace("\r", "\n")
-    return normalized.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n")
+    return (
+        normalized.replace("\\", "\\\\")
+        .replace(";", "\\;")
+        .replace(",", "\\,")
+        .replace("\n", "\\n")
+    )
 
 
 def export_ics(plan: Plan, tasks: list[Task], start_epoch: float | None = None) -> str:

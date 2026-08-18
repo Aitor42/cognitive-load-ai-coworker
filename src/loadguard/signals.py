@@ -72,7 +72,11 @@ def compute_features(events: Iterable[Event], window_minutes: float | None = Non
     window so the resulting features are window-size independent.
     """
     events = list(events)
-    window = window_minutes if (window_minutes is not None and window_minutes > 0.0) else _window_minutes(events)
+    window = (
+        window_minutes
+        if (window_minutes is not None and window_minutes > 0.0)
+        else _window_minutes(events)
+    )
     window_hours = window / 60.0
 
     switches = 0

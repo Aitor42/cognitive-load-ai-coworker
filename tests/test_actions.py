@@ -90,7 +90,9 @@ class TestAudit(unittest.TestCase):
     def test_load_audit_ignores_corrupted_lines(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "audit.jsonl"
-            path.write_text('{"plan_id": "p1"}\nnot_json\n42\n{"plan_id": "p2"}\n', encoding="utf-8")
+            path.write_text(
+                '{"plan_id": "p1"}\nnot_json\n42\n{"plan_id": "p2"}\n', encoding="utf-8"
+            )
             records = load_audit(path)
             self.assertEqual(len(records), 2)
             self.assertEqual([r["plan_id"] for r in records], ["p1", "p2"])

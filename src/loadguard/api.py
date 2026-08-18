@@ -1,0 +1,334 @@
+"""FastAPI layer (optional).
+
+Exposes the pipeline over HTTP and serves the interactive dashboard. The core
+logic remains importable without FastAPI installed.
+
+Endpoints close the loop: analyze -> approve/reject -> export (.ics, tasks) ->
+feedback, plus a local history store for the personalized baseline and a
+privacy endpoint describing exactly what is captured.
+"""
+
+from __future__ import annotations
+
+from dataclasses import asdict
+from pathlib import Path
+from typing import Any, Optional
+
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse, PlainTextResponse, Response
+from pydantic import BaseModel, Field
+
+from .actions import (
+    clear_audit,
+    export_ics,
+    export_tasks_csv,
+    load_audit,
+    record_approval,
+)
+from .baseline import append_score, clear_history, load_history
+from .config import get_guardian_model, get_model
+from .guardian import validate_plan
+from .models import PlanItem, Task
+from .sample_data import sample_tasks
+from .signals import load_events, parse_event
+from .workflow import run_workflow
+
+app = FastAPI(
+    title="LoadGuard",
+    description="Cognitive-Load-Aware AI Co-Worker — IBM AI Builders Challenge 2026",
+    version="0.3.0",
+)
+
+# Local data directory (surfaced to the user; deletable from the dashboard).
+_DATA_DIR = Path(__file__).resolve().parents[2] / ".loadguard"
+HISTORY_PATH = _DATA_DIR / "history.jsonl"
+AUDIT_PATH = _DATA_DIR / "audit.jsonl"
+
+# In-memory plan store: plan_id -> {"payload": ..., "tasks": [...], "events": [...]}
+PLANS: dict[str, dict[str, Any]] = {}
+
+
+class AnalyzeRequest(BaseModel):
+    events: list[dict[str, Any]]
+    tasks: list[dict[str, Any]]
+    window_minutes: Optional[float] = None
+    history: Optional[list[float]] = None
+    approval: Optional[str] = None
+
+
+class ApproveRequest(BaseModel):
+    plan_id: str
+    decision: str  # accepted | rejected | edited
+    feedback: str = ""
+    helpful: Optional[str] = None  # yes | no
+    items: Optional[list[dict[str, Any]]] = None  # edited plan items
+
+
+class FeedbackRequest(BaseModel):
+    plan_id: str
+    helpful: Optional[str] = None  # yes | no
+    feedback: str = ""
+
+
+class HistoryRequest(BaseModel):
+    score: float = Field(ge=0.0, le=100.0)
+
+
+def _parse_bool(val: Any, default: bool = True) -> bool:
+    if val is None:
+        return default
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, str):
+        lowered = val.strip().lower()
+        if lowered in ("true", "1", "yes"):
+            return True
+        if lowered in ("false", "0", "no"):
+            return False
+    return bool(val)
+
+
+def _to_tasks(payload: list[dict[str, Any]]) -> list[Task]:
+    return [
+        Task(
+            id=str(t.get("id", i)),
+            title=str(t.get("title", f"Task {i}")),
+            priority=int(t.get("priority", 3)),
+            duration_minutes=float(t.get("duration_minutes", 30.0)),
+            focus_required=_parse_bool(t.get("focus_required"), True),
+            deadline=float(t["deadline"]) if t.get("deadline") is not None else None,
+            status=str(t.get("status", "todo")),
+        )
+        for i, t in enumerate(payload)
+    ]
+
+
+def _store_plan(result, tasks: list[Task], events: list[Any]) -> dict[str, Any]:
+    payload = asdict(result)
+    plan_id = result.plan.plan_id
+    PLANS[plan_id] = {"payload": payload, "tasks": [asdict(t) for t in tasks], "events": events}
+    payload["plan_id"] = plan_id
+    return payload
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.get("/sample")
+def sample() -> dict[str, Any]:
+    path = Path(__file__).resolve().parents[2] / "demo" / "sample_events.jsonl"
+    events = load_events(path)
+    return {
+        "events": [asdict(e) for e in events],
+        "tasks": [asdict(t) for t in sample_tasks()],
+    }
+
+
+@app.post("/analyze")
+def analyze(req: AnalyzeRequest) -> dict[str, Any]:
+    events = [parse_event(e) for e in req.events]
+    tasks = _to_tasks(req.tasks)
+    result = run_workflow(
+        events,
+        tasks,
+        get_model(),
+        req.window_minutes,
+        history=req.history,
+        approval=req.approval,
+        guardian_model=get_guardian_model(),
+    )
+    return _store_plan(result, tasks, [asdict(e) for e in events])
+
+
+@app.post("/approve")
+def approve(req: ApproveRequest) -> dict[str, Any]:
+    stored = PLANS.get(req.plan_id)
+    if stored is None:
+        raise HTTPException(status_code=404, detail="unknown plan_id")
+    if req.items is not None:
+        # An edited plan replaces the stored items, but it must pass the same
+        # safety gate as an original plan (no invented tasks, no critical
+        # delegation, valid actions).
+        cleaned = [
+            {
+                "position": i + 1,
+                "action": item["action"],
+                "task_id": item.get("task_id"),
+                "title": item.get("title", ""),
+                "rationale": item.get("rationale", ""),
+            }
+            for i, item in enumerate(req.items)
+            if item.get("action") in ("do", "delegate", "focus_block", "break", "batch")
+        ]
+        plan = _plan_from_payload(stored["payload"])
+        plan.items = [
+            PlanItem(
+                position=c["position"],
+                action=c["action"],
+                task_id=c["task_id"],
+                title=c["title"],
+                rationale=c["rationale"],
+            )
+            for c in cleaned
+        ]
+        guard = validate_plan(plan, _to_tasks(stored["tasks"]), plan.note)
+        if not guard.passed:
+            raise HTTPException(
+                status_code=400,
+                detail=f"edited plan failed the safety gate: {guard.summary()}",
+            )
+        stored["payload"]["plan"]["items"] = cleaned
+    record = record_approval(
+        req.plan_id,
+        req.decision,
+        feedback=req.feedback,
+        helpful=req.helpful or "",
+        path=AUDIT_PATH,
+    )
+    stored["payload"]["plan"]["status"] = req.decision
+    return {
+        "plan_id": req.plan_id,
+        "status": req.decision,
+        "audit": record.__dict__,
+    }
+
+
+@app.post("/feedback")
+def feedback(req: FeedbackRequest) -> dict[str, Any]:
+    stored = PLANS.get(req.plan_id)
+    if stored is None:
+        raise HTTPException(status_code=404, detail="unknown plan_id")
+    record = record_approval(
+        req.plan_id,
+        stored["payload"]["plan"].get("status", "pending"),
+        feedback=req.feedback,
+        helpful=req.helpful or "",
+        path=AUDIT_PATH,
+    )
+    return {"plan_id": req.plan_id, "audit": record.__dict__}
+
+
+@app.get("/plan/{plan_id}/export.ics")
+def export_plan_ics(plan_id: str) -> Response:
+    stored = PLANS.get(plan_id)
+    if stored is None:
+        raise HTTPException(status_code=404, detail="unknown plan_id")
+    plan = _plan_from_payload(stored["payload"])
+    tasks = _to_tasks(stored["tasks"])
+    return Response(
+        content=export_ics(plan, tasks),
+        media_type="text/calendar",
+        headers={"Content-Disposition": f'attachment; filename="loadguard-{plan_id}.ics"'},
+    )
+
+
+@app.get("/plan/{plan_id}/export.csv")
+def export_plan_csv(plan_id: str) -> PlainTextResponse:
+    stored = PLANS.get(plan_id)
+    if stored is None:
+        raise HTTPException(status_code=404, detail="unknown plan_id")
+    plan = _plan_from_payload(stored["payload"])
+    tasks = _to_tasks(stored["tasks"])
+    return PlainTextResponse(
+        content=export_tasks_csv(plan, tasks),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="loadguard-{plan_id}.csv"'},
+    )
+
+
+@app.get("/history")
+def history() -> dict[str, Any]:
+    scores = load_history(HISTORY_PATH)
+    return {"history": scores}
+
+
+@app.post("/history")
+def record_history(req: HistoryRequest) -> dict[str, Any]:
+    append_score(HISTORY_PATH, req.score)
+    return {"history": load_history(HISTORY_PATH)}
+
+
+@app.delete("/history")
+def delete_history() -> dict[str, Any]:
+    removed = clear_history(HISTORY_PATH)
+    return {"removed": removed}
+
+
+@app.get("/audit")
+def audit() -> dict[str, Any]:
+    return {"records": load_audit(AUDIT_PATH)}
+
+
+@app.delete("/audit")
+def delete_audit() -> dict[str, Any]:
+    removed = clear_audit(AUDIT_PATH)
+    return {"removed": removed}
+
+
+@app.get("/privacy")
+def privacy() -> dict[str, Any]:
+    """Exactly what LoadGuard captures — and what it never captures."""
+    return {
+        "captured": [
+            "context-switch counts",
+            "meeting count and duration",
+            "notification count and source label",
+            "focus-block count and duration",
+        ],
+        "never_captured": [
+            "screen content",
+            "keystrokes",
+            "message bodies",
+            "audio / video",
+            "physiological data",
+            "health or mental-health data",
+        ],
+        "local_first": True,
+        "statement": (
+            "LoadGuard detects behavioral patterns associated with interruption "
+            "overload; it does not diagnose stress, burnout, or any medical condition."
+        ),
+    }
+
+
+def _plan_from_payload(payload: dict[str, Any]):
+    """Rebuild a Plan object from a stored asdict payload."""
+    from .models import LoadReport, Plan, PlanItem
+
+    lr = payload["load_report"]
+    load_report = LoadReport(
+        score=lr["score"],
+        level=lr["level"],
+        factors=lr.get("factors", {}),
+        explanation=lr.get("explanation", ""),
+        disclaimer=lr.get("disclaimer", ""),
+    )
+    items = [
+        PlanItem(
+            position=i["position"],
+            action=i["action"],
+            task_id=i.get("task_id"),
+            title=i.get("title", ""),
+            rationale=i.get("rationale", ""),
+        )
+        for i in payload["plan"]["items"]
+    ]
+    return Plan(
+        load_report=load_report,
+        items=items,
+        note=payload["plan"].get("note", ""),
+        generated_by=payload["plan"].get("generated_by", "heuristic"),
+        proposed_by=payload["plan"].get("proposed_by", "deterministic"),
+        plan_id=payload["plan"].get("plan_id", payload.get("plan_id", "")),
+        status=payload["plan"].get("status", "pending"),
+    )
+
+
+@app.get("/", response_class=HTMLResponse)
+def dashboard() -> HTMLResponse:
+    path = Path(__file__).resolve().parents[2] / "web" / "index.html"
+    if path.exists():
+        return HTMLResponse(path.read_text(encoding="utf-8"))
+    return HTMLResponse("<h1>dashboard/index.html not found</h1>", status_code=404)

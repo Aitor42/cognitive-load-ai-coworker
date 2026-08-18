@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>LoadGuard — Live Dashboard</title>
+<style>
+:root{color-scheme:dark}
+body{font-family:system-ui,Segoe UI,Roboto,sans-serif;background:#0b1020;color:#e5e7eb;margin:0;padding:32px}
+.wrap{max-width:960px;margin:0 auto}
+h1{margin:0 0 4px;font-size:26px}
+.sub{color:#9ca3af;margin-bottom:16px}
+button{background:#2563eb;color:#fff;border:0;border-radius:8px;padding:10px 16px;font-size:14px;cursor:pointer;margin-right:8px}
+button:hover{background:#1d4ed8}
+button.ghost{background:#1f2937;color:#e5e7eb}
+button.ghost:hover{background:#374151}
+button.green{background:#059669}
+button.green:hover{background:#047857}
+button.red{background:#b91c1c}
+button.red:hover{background:#991b1b}
+button:disabled{opacity:.45;cursor:not-allowed}
+select{background:#1f2937;color:#e5e7eb;border:1px solid #374151;border-radius:8px;padding:10px;font-size:14px;margin-right:8px}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px}
+@media(max-width:720px){.grid{grid-template-columns:1fr}}
+.card{background:#111827;border:1px solid #1f2937;border-radius:12px;padding:20px}
+.card h2{margin:0 0 12px;font-size:16px;color:#d1d5db}
+.big{font-size:44px;font-weight:700}
+.bar{background:#1f2937;border-radius:8px;height:14px;overflow:hidden;margin:8px 0;position:relative}
+.barmark{position:absolute;top:-4px;bottom:-4px;width:2px;background:#93c5fd;z-index:2}
+.barmarklabel{position:absolute;top:-22px;font-size:10px;color:#93c5fd;transform:translateX(-50%);white-space:nowrap}
+table{width:100%;border-collapse:collapse;font-size:14px}
+td{padding:6px 0;border-bottom:1px solid #1f2937}
+td:last-child{text-align:right;font-variant-numeric:tabular-nums}
+tr.top td{color:#fbbf24;font-weight:600}
+ul{list-style:none;padding:0;margin:0}
+li{padding:10px 0;border-bottom:1px solid #1f2937;display:flex;gap:8px;align-items:flex-start}
+li:last-child{border-bottom:0}
+.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;text-transform:uppercase;margin-right:8px;background:#374151;color:#e5e7eb;flex-shrink:0}
+.badge.do{background:#065f46}.badge.delegate{background:#7c2d12}
+.badge.focus_block{background:#1e3a8a}.badge.break{background:#4c1d95}.badge.batch{background:#0e7490}
+.itembody{flex:1}
+.why{color:#9ca3af;font-size:13px;margin-top:2px}
+.level{text-transform:uppercase;letter-spacing:.08em;font-size:13px}
+.delta{font-size:14px;color:#34d399}
+.trend{font-size:13px;color:#93c5fd;margin-top:8px;line-height:1.5}
+.note{font-size:15px;line-height:1.5}
+.meta{font-size:12px;color:#9ca3af;margin-bottom:4px;line-height:1.7}
+.chip{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;margin:2px 6px 2px 0;background:#1f2937;border:1px solid #374151}
+.chip.granite{border-color:#2563eb;color:#93c5fd}
+.chip.det{border-color:#6b7280;color:#d1d5db}
+.chip.ok{border-color:#059669;color:#34d399}
+.chip.warn{border-color:#b45309;color:#fbbf24}
+.disc{color:#6b7280;font-size:12px;margin-top:20px}
+.err{color:#f87171;margin-top:16px}
+.actions{margin-top:14px}
+.exportlinks a{color:#93c5fd;text-decoration:none;margin-right:12px;font-size:14px}
+.exportlinks a:hover{text-decoration:underline}
+.timeline{background:#0f172a;border-radius:8px;height:46px;position:relative;overflow:hidden;border:1px solid #1f2937}
+.tlbar{position:absolute;border-radius:2px}
+.tlbar.notification,.tlbar.context_switch{width:3px;top:16px;bottom:16px}
+.tlbar.meeting{top:6px;bottom:6px}
+.tlbar.focus_block{top:10px;bottom:10px}
+.tlbar.notification{background:#fbbf24}
+.tlbar.context_switch{background:#fb923c}
+.tlbar.meeting{background:#f87171}
+.tlbar.focus_block{background:#34d399}
+.tllegend{display:flex;gap:14px;font-size:12px;color:#9ca3af;margin-top:6px;flex-wrap:wrap}
+.tllegend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.lm::before{background:#f87171}.ln::before{background:#fbbf24}.lc::before{background:#fb923c}.lf::before{background:#34d399}
+.feedback{margin-top:10px}
+.privacy{font-size:13px;line-height:1.7}
+.privacy b{color:#d1d5db}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>🧠 LoadGuard — Live Dashboard</h1>
+<div class="sub">Cognitive-Load-Aware AI Co-Worker · IBM AI Builders Challenge 2026</div>
+
+<div class="toolbar">
+  <select id="scenario">
+    <option value="overload">Scenario: overload morning</option>
+    <option value="balanced">Scenario: balanced day</option>
+    <option value="calm">Scenario: calm day</option>
+  </select>
+  <button onclick="run()">Run analysis</button>
+  <button class="ghost" onclick="saveToBaseline()" id="saveBaseline" disabled>Save today's score to baseline</button>
+  <button class="ghost" onclick="loadHistory()">Show baseline history</button>
+</div>
+<div id="historyBox" class="meta hidden" style="background:#111827;border:1px solid #1f2937;border-radius:8px;padding:12px;margin:12px 0"></div>
+<div class="meta" id="modelChips"></div>
+<div class="err" id="err"></div>
+<div id="out"></div>
+</div>
+
+<script>
+const LABELS={context_switches_per_hour:"Context switches / hour",meeting_ratio:"Meeting density",
+notification_rate:"Notifications / hour",focus_ratio:"Focus time",multitasking_index:"Multitasking"};
+const MODEL_LABEL={watsonx:"Granite via watsonx",ollama:"Granite via Ollama",heuristic:"Deterministic fallback",deterministic:"Deterministic fallback"};
+const KIND_COLORS={meeting:"#f87171",notification:"#fbbf24",context_switch:"#fb923c",focus_block:"#34d399"};
+let PLAN_ID=null; let LAST_SCORE=null; let EVENTS=[]; let CURRENT_PLAN=[];
+
+function esc(s){return String(s==null?"":s).replace(/[&<>\"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+function gauge(s){const c=s<50?"#34d399":s<75?"#fbbf24":"#f87171";
+return `<div style="width:${Math.max(2,s)}%;background:${c};height:100%;border-radius:8px"></div>`;}
+
+async function api(url,opts){const r=await fetch(url,opts);if(!r.ok){const t=await r.text();throw new Error(t.slice(0,200));}return r.json();}
+
+function transformEvents(events,scenario){
+  if(scenario==="overload") return events;
+  let keepN=scenario==="balanced"?0.5:0.15;
+  return events.filter(e=>{
+    if(e.kind==="meeting"||e.kind==="focus_block") return true;
+    return Math.random()<keepN;
+  });
+}
+
+function timelineHtml(events){
+  if(!events.length) return '<div class="timeline"></div>';
+  const times=events.map(e=>e.timestamp);
+  const min=Math.min(...times),max=Math.max(...times),span=Math.max(max-min,1);
+  const bars=events.map(e=>{
+    const left=((e.timestamp-min)/span*100).toFixed(1);
+    const w=(e.kind==="meeting"||e.kind==="focus_block")
+      ? Math.max(2,Math.min((e.duration_minutes*60/span*100),100)).toFixed(1)
+      : 0.3;
+    return `<div class="tlbar ${esc(e.kind)}" style="left:${left}%;width:${w}%" title="${esc(e.meta?.source||e.kind)} ${new Date(e.timestamp*1000).toLocaleTimeString()}"></div>`;
+  }).join("");
+  return `<div class="timeline">${bars}</div>
+  <div class="tllegend"><span class="lm">meetings</span><span class="ln">notifications</span><span class="lc">context switches</span><span class="lf">focus blocks</span></div>`;
+}
+
+function topDriver(lr){
+  const contrib={};
+  for(const k of Object.keys(LABELS)){
+    let v=lr.factors[k];
+    if(k==="context_switches_per_hour") v=Math.min(v/12,1)*0.30;
+    else if(k==="notification_rate") v=Math.min(v/30,1)*0.20;
+    else if(k==="focus_ratio") v=(1-v)*0.15;
+    else if(k==="meeting_ratio") v=v*0.20;
+    else v=v*0.15;
+    contrib[k]=v;
+  }
+  return Object.entries(contrib).sort((a,b)=>b[1]-a[1])[0][0];
+}
+
+function modelChipsHtml(r){
+  const proposed=MODEL_LABEL[r.plan.proposed_by]||r.plan.proposed_by||"deterministic";
+  const narrator=MODEL_LABEL[r.plan.generated_by]||r.plan.generated_by;
+  const guard=r.guardian?.engine||"deterministic";
+  const pChip=r.plan.proposed_by&&r.plan.proposed_by!=="deterministic"?"granite":"det";
+  const gChip=guard==="granite-guardian"?"ok":"det";
+  return `<span class="chip ${pChip}">Decision: ${esc(proposed)}</span>
+    <span class="chip ${gChip}">Guardian: ${esc(guard)}</span>
+    <span class="chip">Narrator: ${esc(narrator)}</span>
+    <span class="chip ${esc(r.plan.status)}">Status: ${esc(r.plan.status)}</span>`;
+}
+
+async function run(){
+  document.getElementById("err").textContent="";
+  const scenario=document.getElementById("scenario").value;
+  try{
+    const s=await api("/sample");
+    const events=transformEvents(s.events,scenario);
+    EVENTS=events;
+    const hist=await api("/history");
+    const r=await api("/analyze",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({events:events,tasks:s.tasks,history:hist.history})});
+    render(r);
+  }catch(e){
+    document.getElementById("err").textContent = e.message==="Failed to fetch"
+      ? "⚠ Cannot reach the API — run: pip install -r requirements.txt && python app.py"
+      : "⚠ "+e.message;
+  }
+}
+
+function render(r){
+  PLAN_ID=r.plan_id; LAST_SCORE=r.load_report.score; CURRENT_PLAN=r.plan.items;
+  const lr=r.load_report,imp=r.impact;
+  document.getElementById("saveBaseline").disabled=false;
+  document.getElementById("modelChips").innerHTML=modelChipsHtml(r);
+
+  const top=topDriver(lr);
+  const factorRows=Object.keys(LABELS).map(k=>
+    `<tr class="${k===top?'top':''}">${k===top?'<td>★ ':''}<td>${esc(LABELS[k])}</td><td>${lr.factors[k]}</td></tr>`).join("");
+
+  const bm=() => {
+    if(!r.baseline) return "";
+    const pct=Math.min(Math.max(r.baseline.mean,0),100);
+    return `<div class="barmark" style="left:${pct}%"><span class="barmarklabel">baseline ${r.baseline.mean.toFixed(0)}</span></div>`;
+  };
+
+  const trendHtml=r.trend?`<div class="trend">${esc(r.trend.summary)}</div>`:"";
+  const whyHtml=`<div class="note">${esc(r.plan.note)}</div>`+
+    `<div class="meta" style="margin-top:8px">Top contributor: <b>${esc(LABELS[top])}</b> · ${esc(lr.explanation)}</div>`;
+
+  const itemRows=r.plan.items.map((i,idx)=>`<li>
+      <input type="checkbox" class="editcb hidden" data-idx="${idx}" checked>
+      <span class="badge ${esc(i.action)}">${esc(i.action)}</span>
+      <div class="itembody"><b>${esc(i.title)}</b><div class="why">${esc(i.rationale)}</div></div>
+    </li>`).join("");
+
+  const status=esc(r.plan.status);
+  document.getElementById("out").innerHTML=`
+    <div class="grid">
+      <div class="card"><h2>Before</h2><div class="big">${imp.before_score.toFixed(0)}<span style="font-size:20px">/100</span></div>
+        <div class="level">${esc(imp.before_level)}</div>
+        <div class="bar">${gauge(imp.before_score)}${r.baseline?bm():""}</div>${trendHtml}</div>
+      <div class="card"><h2>After following the plan</h2><div class="big">${imp.after_score.toFixed(0)}<span style="font-size:20px">/100</span></div>
+        <div class="level">${esc(imp.after_level)}</div>
+        <div class="bar">${gauge(imp.after_score)}</div>
+        <div class="delta">↓ ${imp.delta} points projected</div></div>
+    </div>
+    <div class="card" style="margin-top:20px"><h2>Timeline of signals</h2>${timelineHtml(EVENTS)}</div>
+    <div class="grid" style="margin-top:20px">
+      <div class="card"><h2>Signals (proxies)</h2><table>${factorRows}</table></div>
+      <div class="card"><h2>Proposed plan</h2><ul>${itemRows}</ul>
+        <div class="actions">
+          <button class="green" onclick="decide('accepted')" ${status!=="pending"?"disabled":""}>Accept plan</button>
+          <button class="ghost" onclick="toggleEdit()" ${status!=="pending"?"disabled":""} id="editBtn">Edit plan</button>
+          <button class="red" onclick="decide('rejected')" ${status!=="pending"?"disabled":""}>Reject</button>
+          <button class="ghost hidden" id="saveEdit" onclick="saveEdit()">Save edited plan</button>
+        </div>
+        <div id="statusLine" class="meta" style="margin-top:10px"></div>
+        <div class="exportlinks hidden" id="exports">
+          <a href="/plan/${esc(PLAN_ID)}/export.ics" download>📅 Export calendar (.ics)</a>
+          <a href="/plan/${esc(PLAN_ID)}/export.csv" download>📋 Export tasks (.csv)</a>
+        </div>
+        <div class="feedback hidden" id="feedback">
+          <div class="meta">Was this recommendation helpful?</div>
+          <button class="ghost" onclick="feedback('yes')">👍 Yes</button>
+          <button class="ghost" onclick="feedback('no')">👎 No</button>
+          <input id="fbNote" type="text" placeholder="optional note" style="background:#1f2937;border:1px solid #374151;border-radius:8px;padding:8px;color:#e5e7eb;margin-top:8px;width:100%;box-sizing:border-box">
+        </div>
+      </div>
+    </div>
+    <div class="grid" style="margin-top:20px">
+      <div class="card"><h2>Why am I seeing this recommendation?</h2>${whyHtml}</div>
+      <div class="card"><h2>Privacy</h2><div class="privacy" id="privacyBox">loading…</div>
+        <div class="actions"><button class="red" onclick="deleteHistory()">Delete my history</button></div></div>
+    </div>
+    <div class="disc" id="disclaimer">${esc(lr.disclaimer)}</div>`;
+  updateStatusLine(status);
+  fetchPrivacy();
+}
+
+function updateStatusLine(status){
+  const el=document.getElementById("statusLine");
+  const exports=document.getElementById("exports");
+  const feedback=document.getElementById("feedback");
+  if(!el) return;
+  if(status==="accepted"){
+    el.innerHTML="✅ Plan accepted — protected blocks exported to your calendar. LoadGuard is acting on your day.";
+    exports.classList.remove("hidden"); feedback.classList.remove("hidden");
+  }else if(status==="rejected"){
+    el.innerHTML="❌ Plan rejected — no changes applied. Your day stays exactly as it was.";
+    feedback.classList.remove("hidden");
+  }else if(status==="edited"){
+    el.innerHTML="✏️ Edited plan saved — LoadGuard applies only what you kept.";
+    exports.classList.remove("hidden");
+  }else{
+    el.innerHTML="Plan is a suggestion. Granite proposes, LoadGuard validates, you decide.";
+  }
+}
+
+function toggleEdit(){
+  document.querySelectorAll(".editcb").forEach(c=>c.classList.remove("hidden"));
+  document.getElementById("saveEdit").classList.remove("hidden");
+  document.getElementById("editBtn").textContent="Cancel edit";
+  document.getElementById("editBtn").onclick=()=>{
+    document.querySelectorAll(".editcb").forEach(c=>c.classList.add("hidden"));
+    document.getElementById("saveEdit").classList.add("hidden");
+    document.getElementById("editBtn").textContent="Edit plan";
+    document.getElementById("editBtn").onclick=toggleEdit;
+  };
+}
+
+async function saveEdit(){
+  const boxes=document.querySelectorAll(".editcb");
+  const kept=[],removed=[];
+  boxes.forEach((box,idx)=>{
+    if(box.checked) kept.push(CURRENT_PLAN[idx]);
+    else removed.push(CURRENT_PLAN[idx].title||"item "+(idx+1));
+  });
+  try{
+    const r=await api("/approve",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({plan_id:PLAN_ID,decision:"edited",items:kept,feedback:"removed: "+removed.join(", ")})});
+    document.querySelectorAll(".actions button").forEach(b=>b.disabled=true);
+    updateStatusLine(r.status);
+  }catch(e){document.getElementById("err").textContent="⚠ "+e.message;}
+}
+
+async function decide(decision){
+  try{
+    const body={plan_id:PLAN_ID,decision};
+    const r=await api("/approve",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    document.querySelectorAll(".actions button").forEach(b=>b.disabled=true);
+    updateStatusLine(r.status);
+  }catch(e){document.getElementById("err").textContent="⚠ "+e.message;}
+}
+
+async function feedback(helpful){
+  try{
+    const note=document.getElementById("fbNote")?.value||"";
+    await api("/feedback",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({plan_id:PLAN_ID,helpful,feedback:note})});
+    document.getElementById("feedback").innerHTML='<div class="meta">Thanks — your feedback is recorded in the local audit trail.</div>';
+  }catch(e){document.getElementById("err").textContent="⚠ "+e.message;}
+}
+
+async function fetchPrivacy(){
+  try{
+    const p=await api("/privacy");
+    document.getElementById("privacyBox").innerHTML=
+      `<b>Captured</b> (counts only): ${p.captured.map(esc).join(" · ")}<br><br>`+
+      `<b>Never captured</b>: ${p.never_captured.map(esc).join(" · ")}<br><br>`+
+      `<b>Local-first</b>: ${p.local_first?"all signals stay on your machine":""}<br><br>`+
+      esc(p.statement);
+  }catch(e){document.getElementById("privacyBox").textContent="unavailable";}
+}
+
+async function saveToBaseline(){
+  if(LAST_SCORE==null) return;
+  try{
+    await api("/history",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({score:LAST_SCORE})});
+    const box=document.getElementById("historyBox");
+    if(box){
+      box.innerHTML='<div style="color:#34d399">✅ Saved today\'s score ('+LAST_SCORE.toFixed(0)+'/100) to your personal baseline.</div>';
+      box.classList.remove("hidden");
+    }
+    document.getElementById("err").textContent="";
+  }catch(e){document.getElementById("err").textContent="⚠ "+e.message;}
+}
+
+async function loadHistory(){
+  try{
+    const h=await api("/history");
+    const html=h.history.length
+      ? `<div><b>Personal baseline history:</b> ${h.history.map(s=>s.toFixed(0)).join(" → ")} (${h.history.length} score(s))</div>`
+      : `<div>No history yet — click "Save today's score to baseline" after running an analysis.</div>`;
+    const box=document.getElementById("historyBox");
+    if(box) {
+      box.innerHTML=html;
+      box.classList.remove("hidden");
+    }
+    document.getElementById("err").textContent="";
+  }catch(e){document.getElementById("err").textContent="⚠ "+e.message;}
+}
+
+run();
+</script>
+</body>
+</html>

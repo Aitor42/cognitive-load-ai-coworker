@@ -11,9 +11,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from loadguard.guardian import (  # noqa: E402
     guard_plan,
     run_deterministic_checks,
+    run_llm_guard,
     validate_plan,
 )
-from loadguard.llm import HeuristicModel  # noqa: E402
+from loadguard.llm import ChatModel, HeuristicModel  # noqa: E402
 from loadguard.models import LoadReport, Plan, PlanItem, Task  # noqa: E402
 
 
@@ -118,6 +119,53 @@ class TestGuardian(unittest.TestCase):
         )
         result = validate_plan(plan, tasks, plan.note)
         self.assertTrue(result.passed, result.summary())
+
+
+class _FakeGuardModel(ChatModel):
+    name = "fake-guard"
+
+    def __init__(self, verdict: str | None = "safe") -> None:
+        # verdict: "safe" | "unsafe" | None (guard_text returns None)
+        self._verdict = verdict
+
+    def generate_note(self, load_report, plan, tasks) -> str:
+        return "A safe note."
+
+    def guard_text(self, text: str) -> dict | None:
+        if self._verdict == "safe":
+            return {"safe": True, "issues": []}
+        if self._verdict == "unsafe":
+            return {"safe": False, "issues": ["disrespectful tone"]}
+        return None
+
+
+class TestLlmGuard(unittest.TestCase):
+    def test_heuristic_or_missing_model_skips_llm_guard(self) -> None:
+        self.assertIsNone(run_llm_guard(HeuristicModel(), "note"))
+        self.assertIsNone(run_llm_guard(None, "note"))
+
+    def test_model_without_verdict_skips(self) -> None:
+        self.assertIsNone(run_llm_guard(_FakeGuardModel(None), "note"))
+
+    def test_unsafe_verdict_is_flagged(self) -> None:
+        check = run_llm_guard(_FakeGuardModel("unsafe"), "note")
+        self.assertIsNotNone(check)
+        self.assertEqual(check.name, "granite_guardian")
+        self.assertFalse(check.passed)
+
+    def test_validate_plan_with_model_uses_granite_engine(self) -> None:
+        tasks = [_task("a", 5)]
+        plan = _plan([PlanItem(position=1, action="do", task_id="a", title="Task a")])
+        result = validate_plan(plan, tasks, plan.note, _FakeGuardModel("safe"))
+        self.assertEqual(result.engine, "granite-guardian")
+        self.assertTrue(result.passed)
+
+    def test_guard_plan_reports_structural_failure(self) -> None:
+        tasks = [_task("a", 5)]
+        plan = _plan([PlanItem(position=1, action="do", task_id="ghost", title="Ghost")])
+        _, result = guard_plan(plan, tasks, HeuristicModel())
+        self.assertFalse(result.passed)
+        self.assertFalse(result.sanitized)
 
 
 if __name__ == "__main__":

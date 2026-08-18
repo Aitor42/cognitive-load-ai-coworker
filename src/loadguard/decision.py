@@ -71,7 +71,7 @@ def parse_proposal(raw_text: str) -> DecisionProposal | None:
         data = json.loads(raw_text[start : end + 1])
     except (json.JSONDecodeError, ValueError):
         return None
-    if not isinstance(data, dict):
+    if not isinstance(data, dict):  # pragma: no cover - brace-delimited slice is always a dict
         return None
 
     priority = data.get("priority_task_id")

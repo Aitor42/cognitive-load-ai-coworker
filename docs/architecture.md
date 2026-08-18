@@ -161,9 +161,10 @@ collect_signals -> compute_features -> diagnose_load -> granite_plan
     -> guardian_validation -> human_approval -> apply_plan -> measure_outcome
 ```
 
-`human_approval` is an explicit checkpoint: without a decision the graph stops in
-`awaiting_approval`, and re-invoking it with the decision resumes — demonstrating state,
-checkpoints, and recovery. The same node functions run sequentially when LangGraph is absent.
+`human_approval` is an explicit approval gate: without a decision the flow stops in
+`awaiting_approval`, and re-invoking it with the decision recomputes the flow
+deterministically from the (re-supplied) inputs rather than resuming a persisted LangGraph
+checkpoint. The same node functions run sequentially when LangGraph is absent.
 
 ## LLM runtime
 

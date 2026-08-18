@@ -6,9 +6,10 @@ is installed (``pip install langgraph``):
     collect_signals -> compute_features -> diagnose_load -> granite_plan
         -> guardian_validation -> human_approval -> apply_plan -> measure_outcome
 
-``human_approval`` is an explicit checkpoint: without an approval decision the
-graph stops in ``awaiting_approval`` state, and re-invoking it with the human's
-decision resumes the flow — demonstrating real state, checkpoints, and recovery.
+``human_approval`` is an explicit approval gate: without an approval decision
+the flow stops in the ``awaiting_approval`` state. Re-invoking it with the
+human's decision recomputes the flow deterministically from the (re-supplied)
+inputs rather than resuming a persisted LangGraph checkpoint.
 
 When ``langgraph`` is not installed, the *same* node functions run sequentially,
 so the core pipeline keeps its zero-dependency guarantee.
@@ -107,7 +108,7 @@ def guardian_validation(state: WorkflowState) -> dict[str, Any]:
 
 
 def human_approval(state: WorkflowState) -> dict[str, Any]:
-    """Explicit human checkpoint; the graph waits here without a decision."""
+    """Explicit human approval gate; the flow stops here without a decision."""
     approval = state.get("approval")
     if not approval or not approval.get("decision"):
         return {"status": "awaiting_approval"}

@@ -3,7 +3,7 @@ flowchart TB
     subgraph Inputs["Signal Sources (privacy-preserving)"]
         JSONL["JSONL events<br/>demo/sample_events.jsonl"]
         REST["REST API<br/>POST /analyze"]
-        ADAPT["Adapters<br/>calendar / notifications / OS focus"]
+        ADAPT["Adapters<br/>calendar / notifications (extensible)"]
     end
 
     subgraph Agents["Multi-Agent Pipeline"]
@@ -27,7 +27,7 @@ flowchart TB
     end
 
     subgraph ORCH["Orchestration"]
-        LG["LangGraph StateGraph<br/>langgraph_flow.py<br/>(checkpoints + human-approval node)"]
+        LG["LangGraph StateGraph<br/>langgraph_flow.py<br/>(human-approval gate)"]
     end
 
     JSONL --> SA

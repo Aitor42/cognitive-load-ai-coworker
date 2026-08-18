@@ -93,7 +93,7 @@ flowchart TB
     subgraph Inputs["Signal Sources (privacy-preserving)"]
         JSONL["JSONL events<br/>demo/sample_events.jsonl"]
         REST["REST API<br/>POST /analyze"]
-        ADAPT["Adapters<br/>calendar / notifications / OS focus"]
+        ADAPT["Adapters<br/>calendar / notifications (extensible)"]
     end
 
     subgraph Agents["Multi-Agent Pipeline"]
@@ -117,7 +117,7 @@ flowchart TB
     end
 
     subgraph ORCH["Orchestration"]
-        LG["LangGraph StateGraph<br/>langgraph_flow.py<br/>(checkpoints + human-approval node)"]
+        LG["LangGraph StateGraph<br/>langgraph_flow.py<br/>(human-approval gate)"]
     end
 
     JSONL --> SA
@@ -155,7 +155,7 @@ Each agent is a small, independently testable unit with a single responsibility:
 | **Pilot Evaluation** | Baseline / projected / observed measurement | Deterministic |
 
 The loop is wired as a real **LangGraph `StateGraph`** (`langgraph_flow.py`) with an explicit
-human-approval checkpoint; the same node functions run sequentially when LangGraph is not
+human-approval gate; the same node functions run sequentially when LangGraph is not
 installed, preserving the zero-dependency guarantee.
 
 Full details: [`docs/architecture.md`](docs/architecture.md) · [`docs/architecture.mmd`](docs/architecture.mmd)
@@ -213,7 +213,7 @@ development through consistent, repeatable prompts:
   confidence.
 - **Measurable impact, honestly labelled** — *projected* before/after score, plus *observed*
   metrics when outcome signals are supplied (`demo/benchmark.py --pilot`).
-- **Real LangGraph orchestration** — `StateGraph` with a human-approval checkpoint.
+- **Real LangGraph orchestration** — `StateGraph` with an explicit human-approval gate.
 - **IBM Bob MCP server** — `mcp_server/` exposes the pipeline (propose, approve, export, evaluate)
   as MCP tools so IBM Bob can drive it.
 - **Local-first & privacy-preserving** — signals are processed on-device; only derived aggregates
@@ -222,7 +222,7 @@ development through consistent, repeatable prompts:
 - **Deterministic fallback** — the full pipeline runs with zero API keys, so judges can reproduce
   it instantly.
 - **Self-contained HTML dashboard** — `demo/demo.py --html report.html` renders a shareable report.
-- **Docker + CI** — single-command deployment and GitHub Actions (pytest + ruff).
+- **Docker + CI** — single-command deployment and GitHub Actions (unittest + ruff + coverage + mypy).
 
 ---
 
@@ -240,7 +240,11 @@ python demo/demo.py --html report.html   # generate a self-contained HTML dashbo
 ### 2. Run the tests
 
 ```bash
+pip install ".[dev]"    # coverage + ruff + mypy (dev tooling)
 python -m unittest discover -s tests
+coverage run --branch --source=src/loadguard -m unittest discover -s tests && coverage report
+mypy src               # type check
+ruff check src tests demo scripts app.py mcp_server
 ```
 
 ### 2.1 Benchmark (objective metrics)

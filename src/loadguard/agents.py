@@ -2,7 +2,7 @@
 
 Each agent has a single responsibility and no framework dependency, so the same
 implementations can be orchestrated sequentially (as here) or wrapped in a
-LangGraph StateGraph for checkpointing and tool use without changes.
+LangGraph StateGraph for orchestration and tool use without changes.
 """
 
 from __future__ import annotations

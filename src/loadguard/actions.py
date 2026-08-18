@@ -42,7 +42,7 @@ class ApprovalRecord:
     """One human decision about a plan, written to the audit trail."""
 
     plan_id: str
-    decision: str  # accepted | rejected | edited
+    decision: str  # accepted | rejected | edited | pending
     timestamp: float
     feedback: str = ""
     helpful: str = ""  # yes | no | ""
@@ -128,7 +128,9 @@ def record_approval(
     """Append a human decision to the audit trail (JSONL)."""
     record = ApprovalRecord(
         plan_id=plan_id,
-        decision=decision if decision in APPROVAL_DECISIONS else "rejected",
+        decision=decision
+        if decision in APPROVAL_DECISIONS or decision == "pending"
+        else "rejected",
         timestamp=time.time(),
         feedback=feedback,
         helpful=helpful if helpful in ("yes", "no") else "",

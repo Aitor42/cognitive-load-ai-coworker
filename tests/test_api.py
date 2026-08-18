@@ -14,6 +14,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
@@ -168,6 +169,56 @@ class TestApi(unittest.TestCase):
         self.assertFalse(tasks[0].focus_required)
         self.assertEqual(tasks[0].priority, 4)
         self.assertTrue(tasks[1].focus_required)
+
+    def test_parse_bool_variants(self) -> None:
+        # None falls back to ``default``.
+        self.assertTrue(api_module._parse_bool(None))
+        self.assertFalse(api_module._parse_bool(None, default=False))
+        # Bools pass through.
+        self.assertTrue(api_module._parse_bool(True))
+        self.assertFalse(api_module._parse_bool(False))
+        # Truthy strings.
+        self.assertTrue(api_module._parse_bool("yes"))
+        self.assertTrue(api_module._parse_bool("1"))
+        self.assertTrue(api_module._parse_bool("true"))
+        # Falsy strings.
+        self.assertFalse(api_module._parse_bool("no"))
+        self.assertFalse(api_module._parse_bool("0"))
+        self.assertFalse(api_module._parse_bool("false"))
+        # A non-keyword string falls through to bool().
+        self.assertTrue(api_module._parse_bool("maybe"))
+        # Other values fall through to bool().
+        self.assertTrue(api_module._parse_bool(42))
+        self.assertFalse(api_module._parse_bool(0))
+
+    def test_feedback_unknown_plan_returns_404(self) -> None:
+        resp = self.client.post("/feedback", json={"plan_id": "nope"})
+        self.assertEqual(resp.status_code, 404)
+
+    def test_export_ics_unknown_plan_returns_404(self) -> None:
+        resp = self.client.get("/plan/nope/export.ics")
+        self.assertEqual(resp.status_code, 404)
+
+    def test_export_csv_unknown_plan_returns_404(self) -> None:
+        resp = self.client.get("/plan/nope/export.csv")
+        self.assertEqual(resp.status_code, 404)
+
+    def test_audit_roundtrip_and_delete(self) -> None:
+        data = self._analyze()
+        pid = data["plan_id"]
+        self.client.post("/approve", json={"plan_id": pid, "decision": "accepted"})
+        self.assertGreaterEqual(len(self.client.get("/audit").json()["records"]), 1)
+        self.client.delete("/audit")
+        self.assertEqual(self.client.get("/audit").json()["records"], [])
+
+    def test_dashboard_serves_html(self) -> None:
+        resp = self.client.get("/")
+        self.assertEqual(resp.status_code, 200)
+
+    def test_dashboard_missing_index_returns_404(self) -> None:
+        with mock.patch.object(Path, "exists", return_value=False):
+            resp = api_module.dashboard()
+            self.assertEqual(resp.status_code, 404)
 
 
 if __name__ == "__main__":

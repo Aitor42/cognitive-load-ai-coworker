@@ -1,0 +1,50 @@
+{"timestamp": "2026-08-17T09:00:00Z", "kind": "meeting", "duration_minutes": 60, "meta": {"title": "Standup + sprint planning"}}
+{"timestamp": "2026-08-17T09:02:00Z", "kind": "notification", "meta": {"source": "slack"}}
+{"timestamp": "2026-08-17T09:05:00Z", "kind": "context_switch", "meta": {"from": "meeting", "to": "email"}}
+{"timestamp": "2026-08-17T09:08:00Z", "kind": "notification", "meta": {"source": "ai_assistant"}}
+{"timestamp": "2026-08-17T09:12:00Z", "kind": "notification", "meta": {"source": "slack"}}
+{"timestamp": "2026-08-17T09:15:00Z", "kind": "context_switch", "meta": {"from": "email", "to": "meeting"}}
+{"timestamp": "2026-08-17T09:20:00Z", "kind": "notification", "meta": {"source": "calendar"}}
+{"timestamp": "2026-08-17T09:22:00Z", "kind": "context_switch", "meta": {"from": "meeting", "to": "browser"}}
+{"timestamp": "2026-08-17T09:25:00Z", "kind": "notification", "meta": {"source": "ai_assistant"}}
+{"timestamp": "2026-08-17T09:31:00Z", "kind": "context_switch", "meta": {"from": "browser", "to": "meeting"}}
+{"timestamp": "2026-08-17T09:33:00Z", "kind": "notification", "meta": {"source": "slack"}}
+{"timestamp": "2026-08-17T09:40:00Z", "kind": "notification", "meta": {"source": "email"}}
+{"timestamp": "2026-08-17T09:44:00Z", "kind": "context_switch", "meta": {"from": "meeting", "to": "ide"}}
+{"timestamp": "2026-08-17T09:48:00Z", "kind": "notification", "meta": {"source": "ai_assistant"}}
+{"timestamp": "2026-08-17T09:52:00Z", "kind": "context_switch", "meta": {"from": "ide", "to": "meeting"}}
+{"timestamp": "2026-08-17T09:55:00Z", "kind": "notification", "meta": {"source": "slack"}}
+{"timestamp": "2026-08-17T10:00:00Z", "kind": "meeting", "duration_minutes": 30, "meta": {"title": "1:1 with manager"}}
+{"timestamp": "2026-08-17T10:03:00Z", "kind": "notification", "meta": {"source": "slack"}}
+{"timestamp": "2026-08-17T10:04:00Z", "kind": "context_switch", "meta": {"from": "meeting", "to": "notes"}}
+{"timestamp": "2026-08-17T10:10:00Z", "kind": "notification", "meta": {"source": "ai_assistant"}}
+{"timestamp": "2026-08-17T10:11:00Z", "kind": "context_switch", "meta": {"from": "notes", "to": "meeting"}}
+{"timestamp": "2026-08-17T10:16:00Z", "kind": "notification", "meta": {"source": "calendar"}}
+{"timestamp": "2026-08-17T10:19:00Z", "kind": "context_switch", "meta": {"from": "meeting", "to": "browser"}}
+{"timestamp": "2026-08-17T10:24:00Z", "kind": "notification", "meta": {"source": "slack"}}
+{"timestamp": "2026-08-17T10:26:00Z", "kind": "context_switch", "meta": {"from": "browser", "to": "meeting"}}
+{"timestamp": "2026-08-17T10:33:00Z", "kind": "context_switch", "meta": {"from": "meeting", "to": "ide"}}
+{"timestamp": "2026-08-17T10:38:00Z", "kind": "notification", "meta": {"source": "ai_assistant"}}
+{"timestamp": "2026-08-17T10:45:00Z", "kind": "focus_block", "duration_minutes": 15, "meta": {"title": "Deep work attempt"}}
+{"timestamp": "2026-08-17T10:47:00Z", "kind": "notification", "meta": {"source": "slack"}}
+{"timestamp": "2026-08-17T10:52:00Z", "kind": "context_switch", "meta": {"from": "focus", "to": "slack"}}
+{"timestamp": "2026-08-17T11:00:00Z", "kind": "meeting", "duration_minutes": 45, "meta": {"title": "Cross-team sync"}}
+{"timestamp": "2026-08-17T11:03:00Z", "kind": "notification", "meta": {"source": "email"}}
+{"timestamp": "2026-08-17T11:05:00Z", "kind": "context_switch", "meta": {"from": "meeting", "to": "browser"}}
+{"timestamp": "2026-08-17T11:10:00Z", "kind": "notification", "meta": {"source": "ai_assistant"}}
+{"timestamp": "2026-08-17T11:12:00Z", "kind": "context_switch", "meta": {"from": "browser", "to": "meeting"}}
+{"timestamp": "2026-08-17T11:18:00Z", "kind": "notification", "meta": {"source": "slack"}}
+{"timestamp": "2026-08-17T11:20:00Z", "kind": "context_switch", "meta": {"from": "meeting", "to": "notes"}}
+{"timestamp": "2026-08-17T11:25:00Z", "kind": "notification", "meta": {"source": "calendar"}}
+{"timestamp": "2026-08-17T11:27:00Z", "kind": "context_switch", "meta": {"from": "notes", "to": "meeting"}}
+{"timestamp": "2026-08-17T11:33:00Z", "kind": "notification", "meta": {"source": "ai_assistant"}}
+{"timestamp": "2026-08-17T11:35:00Z", "kind": "context_switch", "meta": {"from": "meeting", "to": "ide"}}
+{"timestamp": "2026-08-17T11:40:00Z", "kind": "context_switch", "meta": {"from": "ide", "to": "meeting"}}
+{"timestamp": "2026-08-17T11:41:00Z", "kind": "notification", "meta": {"source": "slack"}}
+{"timestamp": "2026-08-17T11:50:00Z", "kind": "context_switch", "meta": {"from": "meeting", "to": "email"}}
+{"timestamp": "2026-08-17T11:55:00Z", "kind": "notification", "meta": {"source": "email"}}
+{"timestamp": "2026-08-17T12:05:00Z", "kind": "context_switch", "meta": {"from": "email", "to": "ide"}}
+{"timestamp": "2026-08-17T12:12:00Z", "kind": "notification", "meta": {"source": "ai_assistant"}}
+{"timestamp": "2026-08-17T12:20:00Z", "kind": "focus_block", "duration_minutes": 10, "meta": {"title": "Short focus attempt"}}
+{"timestamp": "2026-08-17T12:23:00Z", "kind": "notification", "meta": {"source": "slack"}}
+{"timestamp": "2026-08-17T12:27:00Z", "kind": "context_switch", "meta": {"from": "focus", "to": "slack"}}

@@ -7,9 +7,9 @@ PYTHON ?= python
 test:  ## Run the unit tests
 	$(PYTHON) -m unittest discover -s tests
 
-coverage:  ## Run tests and report branch coverage
+coverage:  ## Run tests and report branch coverage (fails under 100%)
 	$(PYTHON) -m coverage run --branch --source=src/loadguard -m unittest discover -s tests
-	$(PYTHON) -m coverage report
+	$(PYTHON) -m coverage report --fail-under=100
 
 mypy:  ## Type-check the whole project
 	mypy src mcp_server app.py

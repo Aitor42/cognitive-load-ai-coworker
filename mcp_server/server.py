@@ -22,7 +22,12 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from loadguard.actions import export_ics, export_tasks_csv, record_approval  # noqa: E402
+from loadguard.actions import (  # noqa: E402
+    APPROVAL_DECISIONS,
+    export_ics,
+    export_tasks_csv,
+    record_approval,
+)
 from loadguard.benchmark import run_benchmark, run_pilot_evaluation  # noqa: E402
 from loadguard.models import Task  # noqa: E402
 from loadguard.sample_data import sample_tasks  # noqa: E402
@@ -114,6 +119,7 @@ def propose_plan(events: list[dict], tasks: list[dict], history: list[float] | N
 def approve_plan(events: list[dict], tasks: list[dict], decision: str, feedback: str = "") -> dict:
     """Approve/reject a plan and record the decision in the audit trail."""
     try:
+        decision = decision if decision in APPROVAL_DECISIONS else "rejected"
         result = run_workflow(_to_events(events), _to_tasks(tasks), approval=decision)
         record = record_approval(result.plan.plan_id, decision, feedback=feedback)
         return {

@@ -2,11 +2,10 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install only the API/runtime dependencies (the core pipeline is stdlib-only).
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
+# Install LoadGuard with the optional API + LLM + MCP layers.
+# pyproject.toml is the single source of truth for dependencies.
 COPY . .
+RUN pip install --no-cache-dir -r requirements.txt
 
 ENV PYTHONPATH=/app/src
 EXPOSE 8000

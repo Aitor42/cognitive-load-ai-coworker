@@ -1,9 +1,4 @@
-# Core pipeline runs with stdlib only. Install the optional API + LLM layers as needed.
-fastapi>=0.110
-uvicorn>=0.29
-pydantic>=2.6
-httpx>=0.27
-langchain>=0.2
-langchain-ibm>=0.1
-langgraph>=0.2
-mcp>=1.0
+# Dependencies are declared in pyproject.toml ([project.optional-dependencies]),
+# which is the single source of truth. This installs LoadGuard with the optional
+# API, LLM (Granite), and MCP (IBM Bob) layers.
+.[api,llm,bob]

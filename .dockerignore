@@ -10,6 +10,8 @@ __pycache__
 .ruff_cache
 .mypy_cache
 .pytest_cache
+.venv
+.coverage
 bob_sessions
 tests
 .bob

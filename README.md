@@ -1,5 +1,8 @@
 # 🧠 LoadGuard — Cognitive-Load-Aware AI Co-Worker
 
+[![CI](https://github.com/Aitor42/cognitive-load-ai-coworker/actions/workflows/ci.yml/badge.svg)](https://github.com/Aitor42/cognitive-load-ai-coworker/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)](https://github.com/Aitor42/cognitive-load-ai-coworker)
+
 > **An AI co-worker whose job is to protect you from the other AI co-workers.**
 >
 > Built for the **IBM AI Builders Challenge 2026 — Wildcard: "Build Intelligent Systems for the Future of Work"**.

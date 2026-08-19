@@ -203,7 +203,8 @@ development through consistent, repeatable prompts:
 - **Signal ingestion** — JSONL event stream plus adapter-ready interfaces for calendar and
   notification sources.
 - **Real-signal capture** — `scripts/capture_signals.py` turns a real calendar (ICS) + notification
-  log into events, so the project runs on real data, not just the synthetic sample.
+  log into events, so the project runs on real data, not just the synthetic sample. It also
+extracts out-of-office / vacation events as absences (never the reason).
 - **Explainable Cognitive Load Score** — 0–100 with per-factor contributions, so users can see
   *why* a recommendation was made.
 - **Granite Decision Agent** — Granite proposes the plan structure; a deterministic gate rejects
@@ -214,6 +215,16 @@ development through consistent, repeatable prompts:
   and the resequenced tasks to **CSV**.
 - **Personalized baseline & trend** — score vs. your own history, with trend direction and
   confidence.
+- **Team availability & absences** — track when a worker is on vacation or leave (only the fact
+  and type are stored, never the reason) and surface it in the dashboard.
+- **Deadline-aware reassignment alerts** — when a task's assignee is away before its deadline,
+  LoadGuard flags it and suggests available teammates to take it over.
+- **Midday re-organization** — project the end-of-day load from the morning so far and re-plan
+  when the projected load is high/overload.
+- **Daily cycle scheduler** — a cron-friendly morning + midday entry point
+  (`scripts/schedule.py`) built on the same deterministic functions as the interactive loop.
+- **At-a-glance dashboard** — a one-line summary with expandable details, so the report reads
+  quickly without hiding the reasoning.
 - **Measurable impact, honestly labelled** — *projected* before/after score, plus *observed*
   metrics when outcome signals are supplied (`demo/benchmark.py --pilot`).
 - **Real LangGraph orchestration** — `StateGraph` with an explicit human-approval gate.
@@ -270,6 +281,17 @@ python scripts/capture_signals.py \
 python demo/benchmark.py signals.jsonl
 ```
 
+Out-of-office / vacation events in the calendar are captured separately (only
+the fact and type — never the summary text, which could be a medical reason),
+and can be exported as a worker record ready for `POST /analyze`:
+
+```bash
+python scripts/capture_signals.py \
+    --calendar calendar.ics \
+    --absences-out absences.jsonl \
+    --workers-out workers.jsonl --worker-id me --worker-name Ada
+```
+
 ### 2.3 IBM Bob MCP server
 
 ```bash
@@ -283,7 +305,8 @@ python mcp_server/server.py --self-test
 pip install -r requirements.txt
 python app.py
 # GET  /                          -> interactive dashboard (accept/edit/reject + timeline + privacy)
-# POST /analyze                   -> {"events": [...], "tasks": [...]} + proposal + guardian + trend
+# POST /analyze                   -> {"events": [...], "tasks": [...], "workers": [...]} + proposal + guardian + trend + reassignment alerts
+# POST /midday                    -> projected end-of-day score + optional re-organization
 # POST /approve | /feedback       -> record the human decision
 # GET  /plan/{id}/export.ics      -> protected-blocks calendar
 # GET  /plan/{id}/export.csv      -> resequenced task list
@@ -345,7 +368,7 @@ of impact:
 cognitive-load-ai-coworker/
 ├── app.py                     # FastAPI entrypoint (serves dashboard + /analyze)
 ├── src/loadguard/
-│   ├── models.py              # dataclasses: Event, Task, LoadReport, Plan
+│   ├── models.py              # dataclasses: Event, Task, Absence, Worker, LoadReport, Plan
 │   ├── signals.py             # ingest events, compute features
 │   ├── scoring.py             # weighted Cognitive Load Score (0–100)
 │   ├── recommender.py         # deterministic planner
@@ -357,6 +380,9 @@ cognitive-load-ai-coworker/
 │   ├── workflow.py            # end-to-end multi-agent orchestration
 │   ├── langgraph_flow.py      # LangGraph StateGraph (+ sequential fallback)
 │   ├── impact.py              # before/after impact estimator
+│   ├── availability.py        # absences + deadline-driven reassignment alerts
+│   ├── projection.py          # end-of-day projection + midday re-organization
+│   ├── scheduler.py           # morning + midday daily cycle
 │   ├── benchmark.py           # objective metrics + pilot evaluation
 │   ├── llm.py                 # ChatModel: heuristic / watsonx / ollama (Granite)
 │   └── api.py                 # FastAPI routes
@@ -366,6 +392,7 @@ cognitive-load-ai-coworker/
 │   └── benchmark.py           # benchmark CLI
 ├── scripts/
 │   ├── capture_signals.py     # real-signal capture (ICS calendar + notifications)
+│   ├── schedule.py            # morning + midday daily cycle CLI
 │   └── sample_calendar.ics    # sample ICS for the capture demo
 ├── mcp_server/
 │   └── server.py              # MCP tools so IBM Bob drives the pipeline

@@ -54,7 +54,7 @@ See [`architecture.mmd`](architecture.mmd) for the full Mermaid diagram.
 
 | Module | Responsibility |
 | --- | --- |
-| `models.py` | Dataclasses: `Event`, `FeatureSet`, `Task`, `LoadReport`, `Plan`. |
+| `models.py` | Dataclasses: `Event`, `FeatureSet`, `Task`, `Absence`, `Worker`, `ReassignmentAlert`, `LoadReport`, `Plan`. |
 | `signals.py` | Parse JSONL/API events; aggregate into per-hour/ratio features. |
 | `scoring.py` | Weighted normalization of features into a 0–100 score + level. |
 | `recommender.py` | Deterministic planner: resequence, delegate, insert breaks/focus. |
@@ -66,6 +66,9 @@ See [`architecture.mmd`](architecture.mmd) for the full Mermaid diagram.
 | `workflow.py` | End-to-end orchestration of the full loop. |
 | `langgraph_flow.py` | Real LangGraph `StateGraph` (with sequential fallback). |
 | `impact.py` | Projects the load score after following the plan. |
+| `availability.py` | Worker absences + deadline-driven reassignment alerts. |
+| `projection.py` | End-of-day projection + midday re-organization. |
+| `scheduler.py` | Morning + midday daily-cycle orchestration. |
 | `benchmark.py` | Objective metrics + three-phase pilot evaluation. |
 | `llm.py` | `ChatModel` interface; heuristic + watsonx + ollama (Granite). |
 | `config.py` | Select the model / guardian provider from environment variables. |
@@ -182,6 +185,40 @@ cp .env.example .env
 # set LLM_PROVIDER=watsonx + WATSONX_API_KEY / WATSONX_PROJECT_ID
 # or LLM_PROVIDER=ollama (local, no cloud keys)
 ```
+
+## Team availability & reassignment alerts
+
+`availability.py` models when a worker is unavailable. An `Absence` stores only the window
+and its type (`vacation` or `leave`) — never a medical or personal reason.
+`find_reassignment_alerts` walks todo tasks and, when a task has an assignee, a future
+deadline, and that assignee has an absence overlapping `[now, deadline]`, emits a
+`ReassignmentAlert` listing the teammates available for the whole window.
+
+The alert is a *suggestion*: the human decides whether to reassign. It never mutates the
+plan automatically, consistent with "Granite proposes, LoadGuard validates, the human
+decides".
+
+`scripts/capture_signals.py` extracts absences from a real calendar ICS: out-of-office /
+vacation events (all-day `VALUE=DATE` events, an `X-MICROSOFT-CDO-BUSYSTATUS:OOF` flag, or
+a matching summary) become `Absence` records. Only the fact and type are kept — the event
+summary is never captured, so no medical or personal reason leaks into the data.
+
+## Daily cycle: morning analysis + midday re-organization
+
+`projection.py` projects the end-of-day load from partial-day observations. The only
+assumption is conservative and documented: the remaining day continues at the observed
+per-hour rates and ratios (or at explicitly supplied remaining-day features). Features are
+blended as a time-weighted average, then re-scored.
+
+`scheduler.py` ties the two scheduled beats together:
+
+1. **Morning** — the full `run_workflow` loop produces the initial plan.
+2. **Midday** — `run_midday_review` re-scores the day so far, projects the remainder, and
+   re-plans (deterministically, then guarded) when the projected end-of-day level is
+   `high` or `overload`.
+
+`scripts/schedule.py` is a cron-friendly CLI for both beats; the functions themselves are
+pure, so any scheduler (cron, an in-process loop, APScheduler) can drive them.
 
 ## Extensibility
 

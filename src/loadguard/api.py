@@ -29,8 +29,9 @@ from .actions import (
 from .baseline import append_score, clear_history, load_history
 from .config import get_guardian_model, get_model
 from .guardian import validate_plan
-from .models import LoadReport, Plan, PlanItem, Task
-from .sample_data import sample_tasks
+from .models import Absence, LoadReport, Plan, PlanItem, Task, Worker
+from .projection import run_midday_review
+from .sample_data import sample_tasks, sample_workers
 from .signals import load_events, parse_event
 from .workflow import WorkflowResult, run_workflow
 
@@ -55,6 +56,15 @@ class AnalyzeRequest(BaseModel):
     window_minutes: Optional[float] = None
     history: Optional[list[float]] = None
     approval: Optional[str] = None
+    workers: Optional[list[dict[str, Any]]] = None
+
+
+class MiddayRequest(BaseModel):
+    events: list[dict[str, Any]]
+    tasks: list[dict[str, Any]]
+    workers: Optional[list[dict[str, Any]]] = None
+    elapsed_minutes: float = 240.0
+    total_minutes: float = 480.0
 
 
 class ApproveRequest(BaseModel):
@@ -99,15 +109,46 @@ def _to_tasks(payload: list[dict[str, Any]]) -> list[Task]:
             focus_required=_parse_bool(t.get("focus_required"), True),
             deadline=float(t["deadline"]) if t.get("deadline") is not None else None,
             status=str(t.get("status", "todo")),
+            assignee=str(t["assignee"]) if t.get("assignee") else None,
         )
         for i, t in enumerate(payload)
     ]
 
 
-def _store_plan(result: WorkflowResult, tasks: list[Task], events: list[Any]) -> dict[str, Any]:
+def _to_workers(payload: list[dict[str, Any]]) -> list[Worker]:
+    """Build Worker objects (with nested absences) from API payload dicts."""
+    return [
+        Worker(
+            id=str(w.get("id", i)),
+            name=str(w.get("name", "")),
+            absences=[
+                Absence(
+                    start=float(a["start"]),
+                    end=float(a["end"]),
+                    kind=str(a.get("kind", "leave")),
+                    note=str(a.get("note", "")),
+                )
+                for a in w.get("absences", [])
+            ],
+        )
+        for i, w in enumerate(payload)
+    ]
+
+
+def _store_plan(
+    result: WorkflowResult,
+    tasks: list[Task],
+    events: list[Any],
+    workers: list[Worker] | None = None,
+) -> dict[str, Any]:
     payload = asdict(result)
     plan_id = result.plan.plan_id
-    PLANS[plan_id] = {"payload": payload, "tasks": [asdict(t) for t in tasks], "events": events}
+    PLANS[plan_id] = {
+        "payload": payload,
+        "tasks": [asdict(t) for t in tasks],
+        "events": events,
+        "workers": [asdict(w) for w in workers] if workers else [],
+    }
     payload["plan_id"] = plan_id
     return payload
 
@@ -124,6 +165,7 @@ def sample() -> dict[str, Any]:
     return {
         "events": [asdict(e) for e in events],
         "tasks": [asdict(t) for t in sample_tasks()],
+        "workers": [asdict(w) for w in sample_workers()],
     }
 
 
@@ -131,6 +173,7 @@ def sample() -> dict[str, Any]:
 def analyze(req: AnalyzeRequest) -> dict[str, Any]:
     events = [parse_event(e) for e in req.events]
     tasks = _to_tasks(req.tasks)
+    workers = _to_workers(req.workers or [])
     result = run_workflow(
         events,
         tasks,
@@ -139,8 +182,24 @@ def analyze(req: AnalyzeRequest) -> dict[str, Any]:
         history=req.history,
         approval=req.approval,
         guardian_model=get_guardian_model(),
+        workers=workers,
     )
-    return _store_plan(result, tasks, [asdict(e) for e in events])
+    return _store_plan(result, tasks, [asdict(e) for e in events], workers)
+
+
+@app.post("/midday")
+def midday(req: MiddayRequest) -> dict[str, Any]:
+    events = [parse_event(e) for e in req.events]
+    tasks = _to_tasks(req.tasks)
+    workers = _to_workers(req.workers or [])
+    review = run_midday_review(
+        events,
+        tasks,
+        req.elapsed_minutes,
+        req.total_minutes,
+        workers=workers,
+    )
+    return asdict(review)
 
 
 @app.post("/approve")
@@ -286,6 +345,7 @@ def privacy() -> dict[str, Any]:
             "audio / video",
             "physiological data",
             "health or mental-health data",
+            "the medical or personal reason for an absence",
         ],
         "local_first": True,
         "statement": (

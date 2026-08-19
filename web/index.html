@@ -39,6 +39,7 @@ li:last-child{border-bottom:0}
 .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;text-transform:uppercase;margin-right:8px;background:#374151;color:#e5e7eb;flex-shrink:0}
 .badge.do{background:#065f46}.badge.delegate{background:#7c2d12}
 .badge.focus_block{background:#1e3a8a}.badge.break{background:#4c1d95}.badge.batch{background:#0e7490}
+.badge.reassign{background:#b45309}.badge.available{background:#065f46}.badge.absent{background:#7c2d12}
 .itembody{flex:1}
 .why{color:#9ca3af;font-size:13px;margin-top:2px}
 .level{text-transform:uppercase;letter-spacing:.08em;font-size:13px}
@@ -46,6 +47,8 @@ li:last-child{border-bottom:0}
 .trend{font-size:13px;color:#93c5fd;margin-top:8px;line-height:1.5}
 .note{font-size:15px;line-height:1.5}
 .meta{font-size:12px;color:#9ca3af;margin-bottom:4px;line-height:1.7}
+.summaryline{font-size:14px;color:#e5e7eb;margin:10px 0 0}
+.summaryline b{color:#fbbf24}
 .chip{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;margin:2px 6px 2px 0;background:#1f2937;border:1px solid #374151}
 .chip.granite{border-color:#2563eb;color:#93c5fd}
 .chip.det{border-color:#6b7280;color:#d1d5db}
@@ -72,6 +75,9 @@ li:last-child{border-bottom:0}
 .privacy{font-size:13px;line-height:1.7}
 .privacy b{color:#d1d5db}
 .hidden{display:none}
+details.section{background:#111827;border:1px solid #1f2937;border-radius:12px;padding:16px 20px;margin-top:20px}
+details.section summary{cursor:pointer;font-size:15px;color:#d1d5db;font-weight:600}
+details.section[open] summary{margin-bottom:12px}
 </style>
 </head>
 <body>
@@ -86,6 +92,7 @@ li:last-child{border-bottom:0}
     <option value="calm">Scenario: calm day</option>
   </select>
   <button onclick="run()">Run analysis</button>
+  <button class="ghost" onclick="middayReview()" id="middayBtn" disabled>Midday re-organization</button>
   <button class="ghost" onclick="saveToBaseline()" id="saveBaseline" disabled>Save today's score to baseline</button>
   <button class="ghost" onclick="loadHistory()">Show baseline history</button>
 </div>
@@ -93,6 +100,7 @@ li:last-child{border-bottom:0}
 <div class="meta" id="modelChips"></div>
 <div class="err" id="err"></div>
 <div id="out"></div>
+<div id="middayBox"></div>
 </div>
 
 <script>
@@ -100,11 +108,15 @@ const LABELS={context_switches_per_hour:"Context switches / hour",meeting_ratio:
 notification_rate:"Notifications / hour",focus_ratio:"Focus time",multitasking_index:"Multitasking"};
 const MODEL_LABEL={watsonx:"Granite via watsonx",ollama:"Granite via Ollama",heuristic:"Deterministic fallback",deterministic:"Deterministic fallback"};
 const KIND_COLORS={meeting:"#f87171",notification:"#fbbf24",context_switch:"#fb923c",focus_block:"#34d399"};
-let PLAN_ID=null; let LAST_SCORE=null; let EVENTS=[]; let CURRENT_PLAN=[];
+const ABSENCE_LABEL={vacation:"de vacaciones",leave:"de baja"};
+let PLAN_ID=null; let LAST_SCORE=null; let EVENTS=[]; let CURRENT_PLAN=[]; let WORKERS=[]; let TASKS=[];
 
-function esc(s){return String(s==null?"":s).replace(/[&<>\"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 function gauge(s){const c=s<50?"#34d399":s<75?"#fbbf24":"#f87171";
 return `<div style="width:${Math.max(2,s)}%;background:${c};height:100%;border-radius:8px"></div>`;}
+function fmtDate(epoch){return new Date(epoch*1000).toLocaleDateString();}
+function spanMinutes(events){if(!events.length)return 240;const t=events.map(e=>e.timestamp);
+return Math.max((Math.max(...t)-Math.min(...t))/60,1);}
 
 async function api(url,opts){const r=await fetch(url,opts);if(!r.ok){const t=await r.text();throw new Error(t.slice(0,200));}return r.json();}
 
@@ -158,16 +170,51 @@ function modelChipsHtml(r){
     <span class="chip ${esc(r.plan.status)}">Status: ${esc(r.plan.status)}</span>`;
 }
 
+function itemRowsHtml(items){
+  return items.map(i=>`<li>
+      <span class="badge ${esc(i.action)}">${esc(i.action)}</span>
+      <div class="itembody"><b>${esc(i.title)}</b><div class="why">${esc(i.rationale)}</div></div>
+    </li>`).join("");
+}
+
+function alertsHtml(alerts){
+  if(!alerts||!alerts.length) return '<div class="meta">No pending reassignments.</div>';
+  return `<ul>${alerts.map(a=>`<li>
+      <span class="badge reassign">reassign</span>
+      <div class="itembody"><b>${esc(a.title)}</b>
+        <div class="why">${esc(a.reason)}</div>
+        <div class="why">Sugeridos: ${(a.suggested_assignees||[]).map(esc).join(", ")||"ninguno"} · deadline ${fmtDate(a.deadline)}</div>
+      </div>
+    </li>`).join("")}</ul>`;
+}
+
+function availabilityHtml(workers){
+  if(!workers||!workers.length) return '<div class="meta">No team data.</div>';
+  const now=Date.now()/1000;
+  return `<ul>${workers.map(w=>{
+    const cur=(w.absences||[]).find(a=>a.start<=now&&now<=a.end);
+    if(cur){
+      const label=ABSENCE_LABEL[cur.kind]||cur.kind;
+      return `<li><span class="badge absent">ausente</span>
+        <div class="itembody"><b>${esc(w.name||w.id)}</b>
+        <div class="why">${label} · hasta ${fmtDate(cur.end)}</div></div></li>`;
+    }
+    return `<li><span class="badge available">disponible</span>
+      <div class="itembody"><b>${esc(w.name||w.id)}</b>
+      <div class="why">sin ausencias programadas</div></div></li>`;
+  }).join("")}</ul>`;
+}
+
 async function run(){
   document.getElementById("err").textContent="";
   const scenario=document.getElementById("scenario").value;
   try{
     const s=await api("/sample");
     const events=transformEvents(s.events,scenario);
-    EVENTS=events;
+    EVENTS=events; WORKERS=s.workers||[]; TASKS=s.tasks||[];
     const hist=await api("/history");
     const r=await api("/analyze",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({events:events,tasks:s.tasks,history:hist.history})});
+      body:JSON.stringify({events:events,tasks:TASKS,history:hist.history,workers:WORKERS})});
     render(r);
   }catch(e){
     document.getElementById("err").textContent = e.message==="Failed to fetch"
@@ -178,10 +225,11 @@ async function run(){
 
 function render(r){
   PLAN_ID=r.plan_id; LAST_SCORE=r.load_report.score; CURRENT_PLAN=r.plan.items;
-  const lr=r.load_report,imp=r.impact;
   document.getElementById("saveBaseline").disabled=false;
+  document.getElementById("middayBtn").disabled=false;
   document.getElementById("modelChips").innerHTML=modelChipsHtml(r);
 
+  const lr=r.load_report,imp=r.impact;
   const top=topDriver(lr);
   const factorRows=Object.keys(LABELS).map(k=>
     `<tr class="${k===top?'top':''}">${k===top?'<td>★ ':''}<td>${esc(LABELS[k])}</td><td>${lr.factors[k]}</td></tr>`).join("");
@@ -203,44 +251,57 @@ function render(r){
     </li>`).join("");
 
   const status=esc(r.plan.status);
+  const alerts=(r.reassignment_alerts||[]);
+  const summary=`<div class="summaryline">Carga <b>${esc(lr.level)}</b> · ${imp.before_score.toFixed(0)}/100 →
+    <b>${imp.after_score.toFixed(0)}</b> tras el plan (↓ ${imp.delta} pts) ·
+    ${r.plan.items.length} acciones · ${alerts.length} reasignación(es) pendiente(s)</div>`;
+
   document.getElementById("out").innerHTML=`
-    <div class="grid">
-      <div class="card"><h2>Before</h2><div class="big">${imp.before_score.toFixed(0)}<span style="font-size:20px">/100</span></div>
-        <div class="level">${esc(imp.before_level)}</div>
-        <div class="bar">${gauge(imp.before_score)}${r.baseline?bm():""}</div>${trendHtml}</div>
-      <div class="card"><h2>After following the plan</h2><div class="big">${imp.after_score.toFixed(0)}<span style="font-size:20px">/100</span></div>
-        <div class="level">${esc(imp.after_level)}</div>
-        <div class="bar">${gauge(imp.after_score)}</div>
-        <div class="delta">↓ ${imp.delta} points projected</div></div>
-    </div>
-    <div class="card" style="margin-top:20px"><h2>Timeline of signals</h2>${timelineHtml(EVENTS)}</div>
-    <div class="grid" style="margin-top:20px">
-      <div class="card"><h2>Signals (proxies)</h2><table>${factorRows}</table></div>
-      <div class="card"><h2>Proposed plan</h2><ul>${itemRows}</ul>
-        <div class="actions">
-          <button class="green" onclick="decide('accepted')" ${status!=="pending"?"disabled":""}>Accept plan</button>
-          <button class="ghost" onclick="toggleEdit()" ${status!=="pending"?"disabled":""} id="editBtn">Edit plan</button>
-          <button class="red" onclick="decide('rejected')" ${status!=="pending"?"disabled":""}>Reject</button>
-          <button class="ghost hidden" id="saveEdit" onclick="saveEdit()">Save edited plan</button>
-        </div>
-        <div id="statusLine" class="meta" style="margin-top:10px"></div>
-        <div class="exportlinks hidden" id="exports">
-          <a href="/plan/${esc(PLAN_ID)}/export.ics" download>📅 Export calendar (.ics)</a>
-          <a href="/plan/${esc(PLAN_ID)}/export.csv" download>📋 Export tasks (.csv)</a>
-        </div>
-        <div class="feedback hidden" id="feedback">
-          <div class="meta">Was this recommendation helpful?</div>
-          <button class="ghost" onclick="feedback('yes')">👍 Yes</button>
-          <button class="ghost" onclick="feedback('no')">👎 No</button>
-          <input id="fbNote" type="text" placeholder="optional note" style="background:#1f2937;border:1px solid #374151;border-radius:8px;padding:8px;color:#e5e7eb;margin-top:8px;width:100%;box-sizing:border-box">
-        </div>
+    <div class="card" style="margin-top:20px">
+      <h2>Resumen de un vistazo</h2>${summary}
+      <div class="grid" style="margin-top:16px">
+        <div><div class="meta">Antes</div><div class="big">${imp.before_score.toFixed(0)}<span style="font-size:20px">/100</span></div>
+          <div class="level">${esc(imp.before_level)}</div>
+          <div class="bar">${gauge(imp.before_score)}${r.baseline?bm():""}</div>${trendHtml}</div>
+        <div><div class="meta">Tras seguir el plan</div><div class="big">${imp.after_score.toFixed(0)}<span style="font-size:20px">/100</span></div>
+          <div class="level">${esc(imp.after_level)}</div>
+          <div class="bar">${gauge(imp.after_score)}</div>
+          <div class="delta">↓ ${imp.delta} puntos proyectados</div></div>
       </div>
     </div>
-    <div class="grid" style="margin-top:20px">
-      <div class="card"><h2>Why am I seeing this recommendation?</h2>${whyHtml}</div>
-      <div class="card"><h2>Privacy</h2><div class="privacy" id="privacyBox">loading…</div>
-        <div class="actions"><button class="red" onclick="deleteHistory()">Delete my history</button></div></div>
+
+    <div class="card" style="margin-top:20px"><h2>Plan propuesto</h2><ul>${itemRows}</ul>
+      <div class="actions">
+        <button class="green" onclick="decide('accepted')" ${status!=="pending"?"disabled":""}>Accept plan</button>
+        <button class="ghost" onclick="toggleEdit()" ${status!=="pending"?"disabled":""} id="editBtn">Edit plan</button>
+        <button class="red" onclick="decide('rejected')" ${status!=="pending"?"disabled":""}>Reject</button>
+        <button class="ghost hidden" id="saveEdit" onclick="saveEdit()">Save edited plan</button>
+      </div>
+      <div id="statusLine" class="meta" style="margin-top:10px"></div>
+      <div class="exportlinks hidden" id="exports">
+        <a href="/plan/${esc(PLAN_ID)}/export.ics" download>📅 Export calendar (.ics)</a>
+        <a href="/plan/${esc(PLAN_ID)}/export.csv" download>📋 Export tasks (.csv)</a>
+      </div>
+      <div class="feedback hidden" id="feedback">
+        <div class="meta">Was this recommendation helpful?</div>
+        <button class="ghost" onclick="feedback('yes')">👍 Yes</button>
+        <button class="ghost" onclick="feedback('no')">👎 No</button>
+        <input id="fbNote" type="text" placeholder="optional note" style="background:#1f2937;border:1px solid #374151;border-radius:8px;padding:8px;color:#e5e7eb;margin-top:8px;width:100%;box-sizing:border-box">
+      </div>
     </div>
+
+    <div class="card" style="margin-top:20px"><h2>⚠ Reasignaciones pendientes</h2>${alertsHtml(alerts)}</div>
+
+    <div class="card" style="margin-top:20px"><h2>Equipo — disponibilidad</h2>${availabilityHtml(WORKERS)}</div>
+
+    <details class="section"><summary>🕒 Timeline de señales</summary>${timelineHtml(EVENTS)}</details>
+    <details class="section"><summary>📊 Señales (proxies)</summary><table>${factorRows}</table></details>
+    <details class="section"><summary>💡 ¿Por qué veo esta recomendación?</summary>${whyHtml}</details>
+    <details class="section"><summary>🔒 Privacidad</summary>
+      <div class="privacy" id="privacyBox">loading…</div>
+      <div class="actions"><button class="red" onclick="deleteHistory()">Delete my history</button></div>
+    </details>
+
     <div class="disc" id="disclaimer">${esc(lr.disclaimer)}</div>`;
   updateStatusLine(status);
   fetchPrivacy();
@@ -301,6 +362,29 @@ async function decide(decision){
   }catch(e){document.getElementById("err").textContent="⚠ "+e.message;}
 }
 
+async function middayReview(){
+  document.getElementById("err").textContent="";
+  const box=document.getElementById("middayBox");
+  try{
+    const elapsed=spanMinutes(EVENTS);
+    const r=await api("/midday",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({events:EVENTS,tasks:TASKS,workers:WORKERS,elapsed_minutes:elapsed,total_minutes:480})});
+    const planHtml=(r.reorganized&&r.plan&&r.plan.items&&r.plan.items.length)
+      ? `<h2 style="margin-top:14px">Plan reorganizado</h2><ul>${itemRowsHtml(r.plan.items)}</ul>` : "";
+    box.innerHTML=`
+      <div class="card" style="margin-top:20px">
+        <h2>🕛 Revisión de mediodía</h2>
+        <div class="grid" style="margin-top:0">
+          <div><div class="meta">Observado ahora</div><div class="big">${r.observed_score.toFixed(0)}<span style="font-size:20px">/100</span></div><div class="level">${esc(r.observed_level)}</div></div>
+          <div><div class="meta">Proyectado fin de día</div><div class="big">${r.projected_score.toFixed(0)}<span style="font-size:20px">/100</span></div><div class="level">${esc(r.projected_level)}</div></div>
+        </div>
+        <div class="meta" style="margin-top:10px">${esc(r.rationale)} · ${r.remaining_minutes.toFixed(0)} min restantes</div>
+        ${planHtml}
+        <h2 style="margin-top:14px">Reasignaciones</h2>${alertsHtml(r.reassignment_alerts)}
+      </div>`;
+  }catch(e){document.getElementById("err").textContent="⚠ "+e.message;}
+}
+
 async function feedback(helpful){
   try{
     const note=document.getElementById("fbNote")?.value||"";
@@ -346,6 +430,15 @@ async function loadHistory(){
       box.classList.remove("hidden");
     }
     document.getElementById("err").textContent="";
+  }catch(e){document.getElementById("err").textContent="⚠ "+e.message;}
+}
+
+async function deleteHistory(){
+  try{
+    await api("/history",{method:"DELETE"});
+    document.getElementById("err").textContent="";
+    document.getElementById("historyBox").innerHTML='<div style="color:#34d399">✅ History deleted.</div>';
+    document.getElementById("historyBox").classList.remove("hidden");
   }catch(e){document.getElementById("err").textContent="⚠ "+e.message;}
 }
 

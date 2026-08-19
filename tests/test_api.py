@@ -220,6 +220,64 @@ class TestApi(unittest.TestCase):
             resp = api_module.dashboard()
             self.assertEqual(resp.status_code, 404)
 
+    def test_sample_includes_workers(self) -> None:
+        sample = self.client.get("/sample").json()
+        self.assertIn("workers", sample)
+        self.assertGreater(len(sample["workers"]), 0)
+        self.assertIn("absences", sample["workers"][0])
+
+    def test_to_tasks_parses_assignee(self) -> None:
+        tasks = api_module._to_tasks([{"id": "1", "title": "T", "assignee": "w1"}])
+        self.assertEqual(tasks[0].assignee, "w1")
+        tasks_none = api_module._to_tasks([{"id": "2", "title": "T"}])
+        self.assertIsNone(tasks_none[0].assignee)
+
+    def test_to_workers_builds_absences(self) -> None:
+        workers = api_module._to_workers(
+            [{"id": "w1", "name": "Ada", "absences": [{"start": 1.0, "end": 2.0, "kind": "leave"}]}]
+        )
+        self.assertEqual(workers[0].name, "Ada")
+        self.assertEqual(workers[0].absences[0].kind, "leave")
+        self.assertEqual(workers[0].absences[0].start, 1.0)
+
+    def test_analyze_with_workers_produces_reassignment_alerts(self) -> None:
+        sample = self.client.get("/sample").json()
+        resp = self.client.post(
+            "/analyze",
+            json={
+                "events": sample["events"],
+                "tasks": sample["tasks"],
+                "workers": sample["workers"],
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn("reassignment_alerts", data)
+        self.assertGreater(len(data["reassignment_alerts"]), 0)
+
+    def test_midday_endpoint(self) -> None:
+        sample = self.client.get("/sample").json()
+        resp = self.client.post(
+            "/midday",
+            json={
+                "events": sample["events"],
+                "tasks": sample["tasks"],
+                "workers": sample["workers"],
+                "elapsed_minutes": 240.0,
+                "total_minutes": 480.0,
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn("observed_score", data)
+        self.assertIn("projected_score", data)
+        self.assertIn("reorganized", data)
+        self.assertIn("reassignment_alerts", data)
+
+    def test_privacy_mentions_absence_reason(self) -> None:
+        p = self.client.get("/privacy").json()
+        self.assertIn("the medical or personal reason for an absence", p["never_captured"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -19,7 +19,16 @@ from loadguard.benchmark import (  # noqa: E402
     run_benchmark,
     run_pilot_evaluation,
 )
-from loadguard.models import FOCUS_BLOCK, NOTIFICATION, Event, FeatureSet  # noqa: E402
+from loadguard.models import (  # noqa: E402
+    FOCUS_BLOCK,
+    LEAVE,
+    NOTIFICATION,
+    VACATION,
+    Absence,
+    Event,
+    FeatureSet,
+    Worker,
+)
 from loadguard.sample_data import sample_tasks  # noqa: E402
 from loadguard.signals import load_events  # noqa: E402
 
@@ -174,6 +183,98 @@ class TestCapture(unittest.TestCase):
             self.assertAlmostEqual(events[1].duration_minutes, 30.0)
         finally:
             path.unlink()
+
+    def _write_ics(self, text: str) -> Path:
+        tmp = tempfile.NamedTemporaryFile("w", suffix=".ics", delete=False)
+        tmp.write(text)
+        tmp.close()
+        return Path(tmp.name)
+
+    def test_parse_ics_date(self) -> None:
+        ts = capture_signals._parse_ics_date("20260817")
+        self.assertEqual(ts, capture_signals._parse_ics_datetime("20260817T000000Z"))
+
+    def test_is_absence_by_busy_status_and_summary(self) -> None:
+        self.assertTrue(capture_signals._is_absence({"X-MICROSOFT-CDO-BUSYSTATUS": "OOF"}))
+        self.assertTrue(capture_signals._is_absence({"SUMMARY": "Out of office"}))
+        self.assertFalse(capture_signals._is_absence({"SUMMARY": "Standup"}))
+
+    def test_absence_kind_vacation_vs_leave(self) -> None:
+        self.assertEqual(capture_signals._absence_kind({"SUMMARY": "Vacation"}), VACATION)
+        self.assertEqual(capture_signals._absence_kind({"SUMMARY": "Out of office"}), LEAVE)
+
+    def test_absence_end_all_day_exclusive(self) -> None:
+        start = capture_signals._parse_ics_date("20260817")
+        end = capture_signals._absence_end({"DTEND": "20260820"}, start, True)
+        self.assertEqual(end, capture_signals._parse_ics_date("20260820") - 1.0)
+
+    def test_parse_absences_from_ics(self) -> None:
+        ics = (
+            "BEGIN:VCALENDAR\nVERSION:2.0\n"
+            "BEGIN:VEVENT\nUID:m1\nDTSTART:20260817T090000Z\nDTEND:20260817T100000Z\n"
+            "SUMMARY:Standup\nEND:VEVENT\n"
+            "BEGIN:VEVENT\nUID:a1\nDTSTART;VALUE=DATE:20260817\nDTEND;VALUE=DATE:20260820\n"
+            "SUMMARY:Out of office\nEND:VEVENT\n"
+            "BEGIN:VEVENT\nUID:a2\nDTSTART:20260810T090000Z\nDTEND:20260810T170000Z\n"
+            "SUMMARY:Vacation\nEND:VEVENT\n"
+            "BEGIN:VEVENT\nUID:a3\nDTSTART:20260811T090000Z\nDTEND:20260811T170000Z\n"
+            "SUMMARY:Busy\nX-MICROSOFT-CDO-BUSYSTATUS:OOF\nEND:VEVENT\n"
+            "END:VCALENDAR\n"
+        )
+        path = self._write_ics(ics)
+        try:
+            absences = capture_signals.parse_absences(path)
+            self.assertEqual(len(absences), 3)
+            kinds = [a.kind for a in absences]
+            self.assertEqual(kinds.count(VACATION), 1)
+            self.assertEqual(kinds.count(LEAVE), 2)
+            for a in absences:
+                self.assertGreater(a.end, a.start)
+            # Absences never capture the summary text (privacy).
+            self.assertTrue(all(a.note == "" for a in absences))
+            # The same calendar still yields exactly one real meeting.
+            self.assertEqual(len(capture_signals.parse_ics(path)), 1)
+        finally:
+            path.unlink()
+
+    def test_write_and_load_absences_roundtrip(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "absences.jsonl"
+            absences = [
+                Absence(start=3.0, end=4.0, kind=VACATION),
+                Absence(start=1.0, end=2.0, kind=LEAVE),
+            ]
+            capture_signals.write_absences(absences, path)
+            loaded = capture_signals.load_absences(path)
+            self.assertEqual(len(loaded), 2)
+            self.assertEqual(loaded[0].start, 1.0)  # sorted by start
+            self.assertEqual(loaded[1].kind, VACATION)
+
+    def test_load_absences_ignores_corrupt_lines(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "absences.jsonl"
+            path.write_text(
+                '{"start":1.0,"end":2.0,"kind":"leave"}\nnot_json\n{"bad":true}\n',
+                encoding="utf-8",
+            )
+            self.assertEqual(len(capture_signals.load_absences(path)), 1)
+
+    def test_write_and_load_workers_roundtrip(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "workers.jsonl"
+            worker = Worker(id="me", name="Ada", absences=[Absence(start=1.0, end=2.0, kind=LEAVE)])
+            capture_signals.write_workers([worker], path)
+            loaded = capture_signals.load_workers(path)
+            self.assertEqual(len(loaded), 1)
+            self.assertEqual(loaded[0].id, "me")
+            self.assertEqual(loaded[0].name, "Ada")
+            self.assertEqual(loaded[0].absences[0].kind, LEAVE)
+
+    def test_load_workers_ignores_corrupt_lines(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "workers.jsonl"
+            path.write_text('{"id":"me","absences":[]}\nnot_json\n', encoding="utf-8")
+            self.assertEqual(len(capture_signals.load_workers(path)), 1)
 
 
 if __name__ == "__main__":

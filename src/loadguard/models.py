@@ -29,6 +29,12 @@ TODO = "todo"
 DONE = "done"
 DELEGATED = "delegated"
 
+# Absence kinds. LoadGuard stores only the *fact* and type of an absence
+# (vacation vs. leave) — never a medical or personal reason.
+VACATION = "vacation"
+LEAVE = "leave"
+ABSENCE_KINDS = (VACATION, LEAVE)
+
 
 @dataclass
 class Event:
@@ -78,6 +84,49 @@ class Task:
     focus_required: bool = True
     deadline: Optional[float] = None  # epoch seconds, optional
     status: str = TODO
+    assignee: Optional[str] = None  # worker id the task is assigned to, optional
+
+
+@dataclass
+class Absence:
+    """A period during which a worker is unavailable (vacation or leave).
+
+    Only the fact and the type of the absence are stored; the reason (medical
+    or otherwise) is never captured, consistent with LoadGuard's privacy-first
+    design.
+    """
+
+    start: float  # epoch seconds
+    end: float  # epoch seconds
+    kind: str = LEAVE  # one of ABSENCE_KINDS
+    note: str = ""
+
+    def __post_init__(self) -> None:
+        if self.kind not in ABSENCE_KINDS:
+            raise ValueError(f"unknown absence kind: {self.kind!r}")
+        if self.end < self.start:
+            raise ValueError("absence end precedes start")
+
+
+@dataclass
+class Worker:
+    """A member of the team whose attention LoadGuard protects."""
+
+    id: str
+    name: str = ""
+    absences: list[Absence] = field(default_factory=list)
+
+
+@dataclass
+class ReassignmentAlert:
+    """A deadline-driven suggestion to reassign a task away from an absent worker."""
+
+    task_id: str
+    title: str
+    assignee: str
+    deadline: float
+    reason: str
+    suggested_assignees: list[str] = field(default_factory=list)
 
 
 @dataclass

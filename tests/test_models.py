@@ -10,12 +10,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from loadguard.models import (  # noqa: E402
     DONE,
+    LEAVE,
     OVERLOAD,
+    VACATION,
+    Absence,
     Event,
     LoadReport,
     Plan,
     PlanItem,
+    ReassignmentAlert,
     Task,
+    Worker,
 )
 
 
@@ -45,6 +50,53 @@ class TestTask(unittest.TestCase):
     def test_custom_status(self) -> None:
         t = Task(id="a", title="Fix", priority=5, status=DONE)
         self.assertEqual(t.status, DONE)
+
+    def test_assignee_defaults_to_none(self) -> None:
+        t = Task(id="a", title="Fix", priority=3)
+        self.assertIsNone(t.assignee)
+
+    def test_assignee_custom(self) -> None:
+        t = Task(id="a", title="Fix", priority=3, assignee="w1")
+        self.assertEqual(t.assignee, "w1")
+
+
+class TestAbsence(unittest.TestCase):
+    def test_defaults(self) -> None:
+        a = Absence(start=0.0, end=10.0)
+        self.assertEqual(a.kind, LEAVE)
+        self.assertEqual(a.note, "")
+
+    def test_vacation_kind(self) -> None:
+        a = Absence(start=0.0, end=10.0, kind=VACATION)
+        self.assertEqual(a.kind, VACATION)
+
+    def test_unknown_kind_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            Absence(start=0.0, end=10.0, kind="bogus")
+
+    def test_end_before_start_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            Absence(start=10.0, end=0.0)
+
+
+class TestWorker(unittest.TestCase):
+    def test_defaults(self) -> None:
+        w = Worker(id="w1")
+        self.assertEqual(w.name, "")
+        self.assertEqual(w.absences, [])
+
+    def test_with_absences(self) -> None:
+        w = Worker(id="w1", name="Ada", absences=[Absence(start=0.0, end=10.0)])
+        self.assertEqual(w.name, "Ada")
+        self.assertEqual(len(w.absences), 1)
+
+
+class TestReassignmentAlert(unittest.TestCase):
+    def test_defaults(self) -> None:
+        alert = ReassignmentAlert(
+            task_id="a", title="Fix", assignee="w1", deadline=10.0, reason="away"
+        )
+        self.assertEqual(alert.suggested_assignees, [])
 
 
 class TestPlan(unittest.TestCase):

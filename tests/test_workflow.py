@@ -15,9 +15,12 @@ from loadguard.models import (  # noqa: E402
     FOCUS_BLOCK,
     MEETING,
     NOTIFICATION,
+    VACATION,
+    Absence,
     Event,
     FeatureSet,
     Task,
+    Worker,
 )
 from loadguard.scoring import score  # noqa: E402
 from loadguard.workflow import run_workflow  # noqa: E402
@@ -108,6 +111,17 @@ class TestWorkflow(unittest.TestCase):
         impact = estimate_impact(features, plan)
         self.assertEqual(impact.before_score, impact.after_score)
         self.assertEqual(impact.delta, 0.0)
+
+    def test_workflow_detects_reassignment_alerts(self):
+        workers = [Worker(id="w1", absences=[Absence(start=0.0, end=1000.0, kind=VACATION)])]
+        tasks = [Task(id="a", title="Fix", priority=5, assignee="w1", deadline=500.0)]
+        result = run_workflow(_overload_events(), tasks, workers=workers, now=0.0)
+        self.assertEqual(len(result.reassignment_alerts), 1)
+        self.assertEqual(result.reassignment_alerts[0].task_id, "a")
+
+    def test_workflow_without_workers_has_no_alerts(self):
+        result = run_workflow(_overload_events(), [Task(id="a", title="Fix", priority=5)])
+        self.assertEqual(result.reassignment_alerts, [])
 
     def test_workflow_records_proposing_model(self):
         class _Proposer(ChatModel):

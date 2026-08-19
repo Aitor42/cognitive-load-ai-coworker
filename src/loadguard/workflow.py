@@ -17,9 +17,10 @@ LoadGuard acts → the result is measured.**
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .actions import new_plan_id
+from .availability import find_reassignment_alerts
 from .agents import (
     LoadDiagnosticianAgent,
     NarratorAgent,
@@ -31,7 +32,7 @@ from .decision import DecisionProposal, GraniteDecisionAgent, merge_proposal
 from .guardian import GuardianResult, guard_plan
 from .impact import ImpactResult, estimate_impact
 from .llm import ChatModel
-from .models import Event, FeatureSet, LoadReport, Plan, Task
+from .models import Event, FeatureSet, LoadReport, Plan, ReassignmentAlert, Task, Worker
 
 PENDING = "pending"
 
@@ -47,6 +48,7 @@ class WorkflowResult:
     baseline: PersonalBaseline | None = None
     trend: TrendInfo | None = None
     approval: str = PENDING
+    reassignment_alerts: list[ReassignmentAlert] = field(default_factory=list)
 
 
 def run_workflow(
@@ -58,6 +60,8 @@ def run_workflow(
     approval: str | None = None,
     plan_id: str | None = None,
     guardian_model: ChatModel | None = None,
+    workers: list[Worker] | None = None,
+    now: float | None = None,
 ) -> WorkflowResult:
     """Run the full sense -> diagnose -> plan -> validate -> approve -> impact pipeline."""
     features = SignalAnalystAgent().run(events, window_minutes)
@@ -85,6 +89,7 @@ def run_workflow(
     impact = estimate_impact(features, plan)
 
     personal = compute_baseline(history or [])
+    alerts = find_reassignment_alerts(tasks, workers or [], now)
     return WorkflowResult(
         features=features,
         load_report=load_report,
@@ -95,4 +100,5 @@ def run_workflow(
         baseline=personal,
         trend=trend(load_report.score, personal),
         approval=plan.status,
+        reassignment_alerts=alerts,
     )

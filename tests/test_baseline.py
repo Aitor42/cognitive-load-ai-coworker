@@ -101,6 +101,13 @@ class TestHistoryPersistence(unittest.TestCase):
             path.write_text("not_a_number\n# comment\n42\n", encoding="utf-8")
             self.assertEqual(load_history(path), [42.0])
 
+    def test_load_history_skips_json_objects(self):
+        """JSON objects like {"score": 45} must be skipped, not crash."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "history.jsonl"
+            path.write_text('{"score": 45}\n55\n', encoding="utf-8")
+            self.assertEqual(load_history(path), [55.0])
+
 
 if __name__ == "__main__":
     unittest.main()

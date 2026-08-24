@@ -104,7 +104,7 @@ def load_history(path: str | Path) -> list[float]:
             continue
         try:
             scores.append(float(json.loads(line)))
-        except (json.JSONDecodeError, ValueError):
+        except (json.JSONDecodeError, TypeError, ValueError):
             continue
     return scores
 

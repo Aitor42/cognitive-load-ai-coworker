@@ -215,6 +215,11 @@ class TestApi(unittest.TestCase):
         resp = self.client.get("/")
         self.assertEqual(resp.status_code, 200)
 
+    def test_favicon_returns_svg(self) -> None:
+        resp = self.client.get("/favicon.ico")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("image/svg+xml", resp.headers["content-type"])
+
     def test_dashboard_missing_index_returns_404(self) -> None:
         with mock.patch.object(Path, "exists", return_value=False):
             resp = api_module.dashboard()

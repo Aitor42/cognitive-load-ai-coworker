@@ -386,6 +386,17 @@ def _plan_from_payload(payload: dict[str, Any]) -> Plan:
     )
 
 
+_FAVICON_SVG = (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
+    '<text y=".9em" font-size="90">🧠</text></svg>'
+)
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon() -> Response:
+    return Response(content=_FAVICON_SVG, media_type="image/svg+xml")
+
+
 @app.get("/", response_class=HTMLResponse)
 def dashboard() -> HTMLResponse:
     path = Path(__file__).resolve().parents[2] / "web" / "index.html"

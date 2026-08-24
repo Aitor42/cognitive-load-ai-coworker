@@ -108,7 +108,7 @@ const LABELS={context_switches_per_hour:"Context switches / hour",meeting_ratio:
 notification_rate:"Notifications / hour",focus_ratio:"Focus time",multitasking_index:"Multitasking"};
 const MODEL_LABEL={watsonx:"Granite via watsonx",ollama:"Granite via Ollama",heuristic:"Deterministic fallback",deterministic:"Deterministic fallback"};
 const KIND_COLORS={meeting:"#f87171",notification:"#fbbf24",context_switch:"#fb923c",focus_block:"#34d399"};
-const ABSENCE_LABEL={vacation:"de vacaciones",leave:"de baja"};
+const ABSENCE_LABEL={vacation:"on vacation",leave:"on leave"};
 let PLAN_ID=null; let LAST_SCORE=null; let EVENTS=[]; let CURRENT_PLAN=[]; let WORKERS=[]; let TASKS=[];
 
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
@@ -183,7 +183,7 @@ function alertsHtml(alerts){
       <span class="badge reassign">reassign</span>
       <div class="itembody"><b>${esc(a.title)}</b>
         <div class="why">${esc(a.reason)}</div>
-        <div class="why">Sugeridos: ${(a.suggested_assignees||[]).map(esc).join(", ")||"ninguno"} · deadline ${fmtDate(a.deadline)}</div>
+        <div class="why">Suggested: ${(a.suggested_assignees||[]).map(esc).join(", ")||"none"} · deadline ${fmtDate(a.deadline)}</div>
       </div>
     </li>`).join("")}</ul>`;
 }
@@ -195,13 +195,13 @@ function availabilityHtml(workers){
     const cur=(w.absences||[]).find(a=>a.start<=now&&now<=a.end);
     if(cur){
       const label=ABSENCE_LABEL[cur.kind]||cur.kind;
-      return `<li><span class="badge absent">ausente</span>
+      return `<li><span class="badge absent">absent</span>
         <div class="itembody"><b>${esc(w.name||w.id)}</b>
-        <div class="why">${label} · hasta ${fmtDate(cur.end)}</div></div></li>`;
+        <div class="why">${label} · until ${fmtDate(cur.end)}</div></div></li>`;
     }
-    return `<li><span class="badge available">disponible</span>
+    return `<li><span class="badge available">available</span>
       <div class="itembody"><b>${esc(w.name||w.id)}</b>
-      <div class="why">sin ausencias programadas</div></div></li>`;
+      <div class="why">no scheduled absences</div></div></li>`;
   }).join("")}</ul>`;
 }
 
@@ -252,25 +252,25 @@ function render(r){
 
   const status=esc(r.plan.status);
   const alerts=(r.reassignment_alerts||[]);
-  const summary=`<div class="summaryline">Carga <b>${esc(lr.level)}</b> · ${imp.before_score.toFixed(0)}/100 →
-    <b>${imp.after_score.toFixed(0)}</b> tras el plan (↓ ${imp.delta} pts) ·
-    ${r.plan.items.length} acciones · ${alerts.length} reasignación(es) pendiente(s)</div>`;
+  const summary=`<div class="summaryline">Load <b>${esc(lr.level)}</b> · ${imp.before_score.toFixed(0)}/100 →
+    <b>${imp.after_score.toFixed(0)}</b> after plan (↓ ${imp.delta} pts) ·
+    ${r.plan.items.length} actions · ${alerts.length} pending reassignment(s)</div>`;
 
   document.getElementById("out").innerHTML=`
     <div class="card" style="margin-top:20px">
-      <h2>Resumen de un vistazo</h2>${summary}
+      <h2>At a glance</h2>${summary}
       <div class="grid" style="margin-top:16px">
-        <div><div class="meta">Antes</div><div class="big">${imp.before_score.toFixed(0)}<span style="font-size:20px">/100</span></div>
+        <div><div class="meta">Before</div><div class="big">${imp.before_score.toFixed(0)}<span style="font-size:20px">/100</span></div>
           <div class="level">${esc(imp.before_level)}</div>
           <div class="bar">${gauge(imp.before_score)}${r.baseline?bm():""}</div>${trendHtml}</div>
-        <div><div class="meta">Tras seguir el plan</div><div class="big">${imp.after_score.toFixed(0)}<span style="font-size:20px">/100</span></div>
+        <div><div class="meta">After following the plan</div><div class="big">${imp.after_score.toFixed(0)}<span style="font-size:20px">/100</span></div>
           <div class="level">${esc(imp.after_level)}</div>
           <div class="bar">${gauge(imp.after_score)}</div>
-          <div class="delta">↓ ${imp.delta} puntos proyectados</div></div>
+          <div class="delta">↓ ${imp.delta} points projected</div></div>
       </div>
     </div>
 
-    <div class="card" style="margin-top:20px"><h2>Plan propuesto</h2><ul>${itemRows}</ul>
+    <div class="card" style="margin-top:20px"><h2>Proposed plan</h2><ul>${itemRows}</ul>
       <div class="actions">
         <button class="green" onclick="decide('accepted')" ${status!=="pending"?"disabled":""}>Accept plan</button>
         <button class="ghost" onclick="toggleEdit()" ${status!=="pending"?"disabled":""} id="editBtn">Edit plan</button>
@@ -290,14 +290,14 @@ function render(r){
       </div>
     </div>
 
-    <div class="card" style="margin-top:20px"><h2>⚠ Reasignaciones pendientes</h2>${alertsHtml(alerts)}</div>
+    <div class="card" style="margin-top:20px"><h2>⚠ Pending reassignments</h2>${alertsHtml(alerts)}</div>
 
-    <div class="card" style="margin-top:20px"><h2>Equipo — disponibilidad</h2>${availabilityHtml(WORKERS)}</div>
+    <div class="card" style="margin-top:20px"><h2>Team — availability</h2>${availabilityHtml(WORKERS)}</div>
 
-    <details class="section"><summary>🕒 Timeline de señales</summary>${timelineHtml(EVENTS)}</details>
-    <details class="section"><summary>📊 Señales (proxies)</summary><table>${factorRows}</table></details>
-    <details class="section"><summary>💡 ¿Por qué veo esta recomendación?</summary>${whyHtml}</details>
-    <details class="section"><summary>🔒 Privacidad</summary>
+    <details class="section"><summary>🕒 Signal timeline</summary>${timelineHtml(EVENTS)}</details>
+    <details class="section"><summary>📊 Signals (proxies)</summary><table>${factorRows}</table></details>
+    <details class="section"><summary>💡 Why am I seeing this recommendation?</summary>${whyHtml}</details>
+    <details class="section"><summary>🔒 Privacy</summary>
       <div class="privacy" id="privacyBox">loading…</div>
       <div class="actions"><button class="red" onclick="deleteHistory()">Delete my history</button></div>
     </details>
@@ -370,17 +370,17 @@ async function middayReview(){
     const r=await api("/midday",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({events:EVENTS,tasks:TASKS,workers:WORKERS,elapsed_minutes:elapsed,total_minutes:480})});
     const planHtml=(r.reorganized&&r.plan&&r.plan.items&&r.plan.items.length)
-      ? `<h2 style="margin-top:14px">Plan reorganizado</h2><ul>${itemRowsHtml(r.plan.items)}</ul>` : "";
+      ? `<h2 style="margin-top:14px">Reorganized plan</h2><ul>${itemRowsHtml(r.plan.items)}</ul>` : "";
     box.innerHTML=`
       <div class="card" style="margin-top:20px">
-        <h2>🕛 Revisión de mediodía</h2>
+        <h2>🕛 Midday review</h2>
         <div class="grid" style="margin-top:0">
-          <div><div class="meta">Observado ahora</div><div class="big">${r.observed_score.toFixed(0)}<span style="font-size:20px">/100</span></div><div class="level">${esc(r.observed_level)}</div></div>
-          <div><div class="meta">Proyectado fin de día</div><div class="big">${r.projected_score.toFixed(0)}<span style="font-size:20px">/100</span></div><div class="level">${esc(r.projected_level)}</div></div>
+          <div><div class="meta">Observed now</div><div class="big">${r.observed_score.toFixed(0)}<span style="font-size:20px">/100</span></div><div class="level">${esc(r.observed_level)}</div></div>
+          <div><div class="meta">Projected end of day</div><div class="big">${r.projected_score.toFixed(0)}<span style="font-size:20px">/100</span></div><div class="level">${esc(r.projected_level)}</div></div>
         </div>
-        <div class="meta" style="margin-top:10px">${esc(r.rationale)} · ${r.remaining_minutes.toFixed(0)} min restantes</div>
+        <div class="meta" style="margin-top:10px">${esc(r.rationale)} · ${r.remaining_minutes.toFixed(0)} min remaining</div>
         ${planHtml}
-        <h2 style="margin-top:14px">Reasignaciones</h2>${alertsHtml(r.reassignment_alerts)}
+        <h2 style="margin-top:14px">Reassignments</h2>${alertsHtml(r.reassignment_alerts)}
       </div>`;
   }catch(e){document.getElementById("err").textContent="⚠ "+e.message;}
 }

@@ -162,6 +162,11 @@ class TestCapture(unittest.TestCase):
         """PT45M should be 45 minutes."""
         self.assertAlmostEqual(capture_signals._parse_duration("PT45M"), 45.0)
 
+    def test_parse_duration_with_days(self) -> None:
+        """P1D and P1DT2H30M should expand days into minutes."""
+        self.assertAlmostEqual(capture_signals._parse_duration("P1D"), 1440.0)
+        self.assertAlmostEqual(capture_signals._parse_duration("P1DT2H30M"), 1590.0)
+
     def test_parse_duration_empty_pt(self):
         """PT with no components should fall back to 60 minutes."""
         self.assertAlmostEqual(capture_signals._parse_duration("PT"), 60.0)
@@ -342,6 +347,76 @@ class TestCapture(unittest.TestCase):
         start = capture_signals._parse_ics_date("20260817")
         end = capture_signals._absence_end({"DTEND": "20260820"}, start, True)
         self.assertEqual(end, capture_signals._parse_ics_date("20260820") - 1.0)
+
+    def test_absence_end_all_day_with_duration_is_full_day(self) -> None:
+        """An all-day event spans the whole day even with a DURATION."""
+        start = capture_signals._parse_ics_date("20260817")
+        end = capture_signals._absence_end({"DURATION": "PT8H"}, start, True)
+        self.assertEqual(end, start + 86400.0 - 1.0)
+
+    def test_transparent_all_day_event_is_absence(self) -> None:
+        self.assertTrue(capture_signals._is_absence({"TRANSP": "TRANSPARENT"}, all_day=True))
+
+    def test_timed_transparent_event_is_not_absence(self) -> None:
+        self.assertFalse(capture_signals._is_absence({"TRANSP": "TRANSPARENT"}))
+
+    def test_parse_absences_detects_transparent_all_day_events(self) -> None:
+        """Google-style OOO: all-day + TRANSPARENT with a generic summary."""
+        ics = (
+            "BEGIN:VCALENDAR\nVERSION:2.0\n"
+            "BEGIN:VEVENT\nUID:a1\nDTSTART;VALUE=DATE:20260817\nDTEND;VALUE=DATE:20260818\n"
+            "SUMMARY:Team offsite\nTRANSP:TRANSPARENT\nEND:VEVENT\n"
+            "END:VCALENDAR\n"
+        )
+        path = self._write_ics(ics)
+        try:
+            absences = capture_signals.parse_absences(path)
+            self.assertEqual(len(absences), 1)
+            self.assertEqual(absences[0].kind, LEAVE)
+        finally:
+            path.unlink()
+
+    def test_parse_ics_skips_malformed_events(self) -> None:
+        """One broken VEVENT must not abort the rest of the calendar."""
+        import contextlib
+        import io
+
+        ics = (
+            "BEGIN:VCALENDAR\nVERSION:2.0\n"
+            "BEGIN:VEVENT\nUID:g1\nDTSTART:20260817T090000Z\nDTEND:20260817T100000Z\n"
+            "SUMMARY:Standup\nEND:VEVENT\n"
+            "BEGIN:VEVENT\nUID:b1\nDTSTART:notadate\nDTEND:20260817T100000Z\n"
+            "SUMMARY:Broken\nEND:VEVENT\n"
+            "END:VCALENDAR\n"
+        )
+        path = self._write_ics(ics)
+        try:
+            with contextlib.redirect_stderr(io.StringIO()):
+                events = capture_signals.parse_ics(path)
+            self.assertEqual(len(events), 1)
+            self.assertEqual(events[0].meta["title"], "Standup")
+        finally:
+            path.unlink()
+
+    def test_parse_absences_skips_malformed_events(self) -> None:
+        import contextlib
+        import io
+
+        ics = (
+            "BEGIN:VCALENDAR\nVERSION:2.0\n"
+            "BEGIN:VEVENT\nUID:a1\nDTSTART;VALUE=DATE:20260817\nDTEND;VALUE=DATE:20260818\n"
+            "SUMMARY:Out of office\nEND:VEVENT\n"
+            "BEGIN:VEVENT\nUID:b1\nDTSTART;VALUE=DATE:bad\nDTEND;VALUE=DATE:20260818\n"
+            "SUMMARY:Vacation\nEND:VEVENT\n"
+            "END:VCALENDAR\n"
+        )
+        path = self._write_ics(ics)
+        try:
+            with contextlib.redirect_stderr(io.StringIO()):
+                absences = capture_signals.parse_absences(path)
+            self.assertEqual(len(absences), 1)
+        finally:
+            path.unlink()
 
     def test_parse_absences_from_ics(self) -> None:
         ics = (

@@ -109,13 +109,18 @@ def _parse_iso(value: str) -> float:
 
 
 def _parse_duration(value: str) -> float:
-    m = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", value.strip())
+    m = re.match(
+        r"P(?:(?P<days>\d+)D)?(?:T(?:(?P<hours>\d+)H)?"
+        r"(?:(?P<minutes>\d+)M)?(?:(?P<seconds>\d+)S)?)?",
+        value.strip(),
+    )
     if not m or not any(m.groups()):
         return 60.0  # no numeric components matched; fall back to 1 hour
-    h = int(m.group(1) or 0)
-    minutes = int(m.group(2) or 0)
-    s = int(m.group(3) or 0)
-    return h * 60 + minutes + s / 60.0
+    days = int(m.group("days") or 0)
+    h = int(m.group("hours") or 0)
+    minutes = int(m.group("minutes") or 0)
+    s = int(m.group("seconds") or 0)
+    return days * 1440 + h * 60 + minutes + s / 60.0
 
 
 def _unfold(text: str) -> str:
@@ -166,12 +171,21 @@ def _vevents(path: Path) -> list[tuple[dict[str, str], dict[str, str | None], bo
     return out
 
 
-def _is_absence(props: dict[str, str]) -> bool:
-    """Detect an out-of-office / vacation / leave event from its properties."""
+def _is_absence(props: dict[str, str], all_day: bool = False) -> bool:
+    """Detect an out-of-office / vacation / leave event from its properties.
+
+    A summary keyword always marks an absence. Microsoft exporters also flag
+    out-of-office with ``X-MICROSOFT-CDO-BUSYSTATUS:OOF``, and Google marks
+    all-day events as ``TRANSP:TRANSPARENT``. The transparent signal only
+    counts when the event is all-day, so free/transparent reminders (e.g. a
+    birthday) are not mistaken for leave.
+    """
     summary = props.get("SUMMARY", "").lower()
     if any(k in summary for k in ABSENCE_SUMMARY_KEYWORDS):
         return True
-    return props.get("X-MICROSOFT-CDO-BUSYSTATUS", "").upper() == "OOF"
+    if props.get("X-MICROSOFT-CDO-BUSYSTATUS", "").upper() == "OOF":
+        return True
+    return all_day and props.get("TRANSP", "").upper() == "TRANSPARENT"
 
 
 def _absence_kind(props: dict[str, str]) -> str:
@@ -193,10 +207,11 @@ def _absence_end(
         if all_day:
             return _parse_ics_date(props["DTEND"]) - 1.0
         return _parse_ics_datetime(props["DTEND"], tzids.get("DTEND"))
+    if all_day:
+        # All-day events span the whole day regardless of any DURATION.
+        return start + 86400.0 - 1.0
     if "DURATION" in props:
         return start + _parse_duration(props["DURATION"]) * 60.0
-    if all_day:
-        return start + 86400.0 - 1.0
     return start + 3600.0
 
 
@@ -358,17 +373,21 @@ def parse_ics(path: Path) -> list[Event]:
     """
     events: list[Event] = []
     for props, tzids, all_day in _vevents(path):
-        if all_day or _is_absence(props):
-            continue
-        for start, end in _event_occurrences(props, tzids, all_day):
-            events.append(
-                Event(
-                    timestamp=start,
-                    kind="meeting",
-                    duration_minutes=max((end - start) / 60.0, 1.0),
-                    meta={"title": props.get("SUMMARY", "")},
+        try:
+            if all_day or _is_absence(props, all_day):
+                continue
+            for start, end in _event_occurrences(props, tzids, all_day):
+                events.append(
+                    Event(
+                        timestamp=start,
+                        kind="meeting",
+                        duration_minutes=max((end - start) / 60.0, 1.0),
+                        meta={"title": props.get("SUMMARY", "")},
+                    )
                 )
-            )
+        except (ValueError, TypeError) as exc:
+            # One malformed VEVENT must not abort the whole calendar.
+            print(f"warning: skipping malformed calendar event: {exc}", file=sys.stderr)
     return events
 
 
@@ -380,11 +399,15 @@ def parse_absences(path: Path) -> list[Absence]:
     """
     absences: list[Absence] = []
     for props, tzids, all_day in _vevents(path):
-        if not _is_absence(props):
-            continue
-        kind = _absence_kind(props)
-        for start, end in _event_occurrences(props, tzids, all_day):
-            absences.append(Absence(start=start, end=end, kind=kind))
+        try:
+            if not _is_absence(props, all_day):
+                continue
+            kind = _absence_kind(props)
+            for start, end in _event_occurrences(props, tzids, all_day):
+                absences.append(Absence(start=start, end=end, kind=kind))
+        except (ValueError, TypeError) as exc:
+            # One malformed VEVENT must not abort the whole calendar.
+            print(f"warning: skipping malformed absence event: {exc}", file=sys.stderr)
     return absences
 
 

@@ -140,6 +140,7 @@ def _resolve_weights(
 def _explanation(
     factors: dict[str, float],
     weights: dict[str, float] | None = None,
+    ai_interruption_ratio: float | None = None,
 ) -> str:
     factor_names = {
         "context_switches_per_hour": "context switches per hour",
@@ -159,6 +160,10 @@ def _explanation(
     interaction = _interaction_bonus(_contributions(factors)) * INTERACTION_WEIGHT
     if interaction >= 0.02:
         text += " Compounding meetings and interruptions amplify the load."
+    if ai_interruption_ratio is not None and ai_interruption_ratio >= 0.40:
+        text += (
+            f" {int(ai_interruption_ratio * 100)}% of interruptions originated from AI assistants."
+        )
     return text
 
 
@@ -187,9 +192,15 @@ def score(
     value = round(total * 100.0, 1)
     level = _level(value)
 
+    # Share of interruptions that came from AI tools (None when no notifications).
+    ai_ratio: float | None = None
+    if features.notification_rate > 0.0:
+        ai_ratio = round(min(features.ai_notification_rate / features.notification_rate, 1.0), 2)
+
     return LoadReport(
         score=value,
         level=level,
         factors=factors,
-        explanation=_explanation(factors, active_weights),
+        explanation=_explanation(factors, active_weights, ai_ratio),
+        ai_interruption_ratio=ai_ratio,
     )

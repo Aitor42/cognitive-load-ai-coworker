@@ -410,6 +410,30 @@ class TestScoreContract(unittest.TestCase):
         )
         self.assertIn("Compounding meetings and interruptions", report.explanation)
 
+    def test_ai_interruption_ratio_none_without_notifications(self) -> None:
+        report = score(FeatureSet())
+        self.assertIsNone(report.ai_interruption_ratio)
+
+    def test_ai_interruption_ratio_from_ai_notifications(self) -> None:
+        report = score(FeatureSet(notification_rate=10.0, ai_notification_rate=6.0))
+        self.assertAlmostEqual(report.ai_interruption_ratio, 0.6, places=2)
+
+    def test_ai_ratio_capped_at_one(self) -> None:
+        report = score(FeatureSet(notification_rate=1.0, ai_notification_rate=9.0))
+        self.assertEqual(report.ai_interruption_ratio, 1.0)
+
+    def test_explanation_mentions_ai_share_above_threshold(self) -> None:
+        report = score(
+            FeatureSet(notification_rate=10.0, ai_notification_rate=6.0, focus_ratio=1.0)
+        )
+        self.assertIn("60% of interruptions originated from AI assistants", report.explanation)
+
+    def test_explanation_omits_ai_below_threshold(self) -> None:
+        report = score(
+            FeatureSet(notification_rate=10.0, ai_notification_rate=3.0, focus_ratio=1.0)
+        )
+        self.assertNotIn("AI assistants", report.explanation)
+
     def test_explanation_names_two_drivers(self) -> None:
         report = score(
             FeatureSet(context_switches_per_hour=12.0, notification_rate=30.0, focus_ratio=1.0)

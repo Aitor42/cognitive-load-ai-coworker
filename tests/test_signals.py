@@ -18,6 +18,7 @@ from loadguard.models import (  # noqa: E402
     Event,
 )
 from loadguard.signals import (  # noqa: E402
+    _is_ai_source,
     _to_epoch,
     _window_minutes,
     compute_features,
@@ -182,6 +183,37 @@ class TestComputeFeatures(unittest.TestCase):
         # rapid: 2/2 = 1.0
         # multitasking = max(0, 1.0) = 1.0
         self.assertAlmostEqual(f.multitasking_index, 1.0, places=2)
+
+    def test_ai_source_markers(self) -> None:
+        self.assertTrue(_is_ai_source("ai_assistant"))
+        self.assertTrue(_is_ai_source("GitHub Copilot"))
+        self.assertTrue(_is_ai_source("agent"))
+        self.assertFalse(_is_ai_source("slack"))
+        self.assertFalse(_is_ai_source("email"))
+        self.assertFalse(_is_ai_source(""))
+
+    def test_ai_notification_rate(self) -> None:
+        events = [
+            Event(timestamp=0.0, kind=NOTIFICATION, meta={"source": "slack"}),
+            Event(timestamp=60.0, kind=NOTIFICATION, meta={"source": "ai_assistant"}),
+            Event(timestamp=120.0, kind=NOTIFICATION, meta={"source": "ai_assistant"}),
+            Event(timestamp=180.0, kind=NOTIFICATION, meta={"source": "email"}),
+        ]
+        f = compute_features(events, window_minutes=60.0)
+        self.assertAlmostEqual(f.notification_rate, 4.0)
+        self.assertAlmostEqual(f.ai_notification_rate, 2.0)
+
+    def test_ai_notification_rate_zero_without_notifications(self) -> None:
+        f = compute_features([], window_minutes=60.0)
+        self.assertEqual(f.ai_notification_rate, 0.0)
+
+    def test_ai_notification_rate_ignores_non_notification_events(self) -> None:
+        events = [
+            Event(timestamp=0.0, kind=MEETING, duration_minutes=30.0, meta={"source": "ai"}),
+            Event(timestamp=100.0, kind=CONTEXT_SWITCH, meta={"source": "copilot"}),
+        ]
+        f = compute_features(events, window_minutes=60.0)
+        self.assertEqual(f.ai_notification_rate, 0.0)
 
 
 if __name__ == "__main__":

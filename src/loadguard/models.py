@@ -71,6 +71,7 @@ class FeatureSet:
     notification_rate: float = 0.0  # notifications per hour
     focus_ratio: float = 0.0  # minutes in focus blocks / window minutes (0..1)
     multitasking_index: float = 0.0  # 0..1, share of time overlapping activity
+    ai_notification_rate: float = 0.0  # notifications per hour attributed to AI tools
 
 
 @dataclass
@@ -137,6 +138,7 @@ class LoadReport:
     level: str  # low | moderate | high | overload
     factors: dict[str, float] = field(default_factory=dict)
     explanation: str = ""
+    ai_interruption_ratio: Optional[float] = None  # share of notifications from AI tools
     disclaimer: str = (
         "Cognitive Load Score is a behavioral proxy derived from counts and "
         "ratios of work signals, not a physiological measurement."

@@ -7,6 +7,7 @@ explanable FeatureSet consumed by the scoring engine.
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -16,6 +17,21 @@ from .models import CONTEXT_SWITCH, FOCUS_BLOCK, MEETING, NOTIFICATION, Event, F
 # Rapid-fire threshold: context switches closer than this are considered
 # frantic multitasking, even outside meetings.
 RAPID_SWITCH_SECONDS = 120.0
+
+# Best-effort markers (lowercased) that identify an AI-tool interruption
+# source. The capture pipeline keeps only opaque source labels, so this is a
+# documented heuristic, not a claim about a product. "ai" is matched only as
+# a standalone token, because it appears inside words like "email".
+AI_SOURCE_MARKERS = ("copilot", "assistant", "agent")
+
+
+def _is_ai_source(source: str) -> bool:
+    """Whether an opaque notification source label looks like an AI tool."""
+    lowered = source.lower()
+    tokens = re.split(r"[^a-z0-9]+", lowered)
+    if "ai" in tokens:
+        return True
+    return any(marker in lowered for marker in AI_SOURCE_MARKERS)
 
 
 def _to_epoch(value: Any) -> float:
@@ -85,6 +101,7 @@ def compute_features(events: Iterable[Event], window_minutes: float | None = Non
 
     switches = 0
     notifications = 0
+    ai_notifications = 0
     meeting_minutes = 0.0
     focus_minutes = 0.0
 
@@ -97,6 +114,8 @@ def compute_features(events: Iterable[Event], window_minutes: float | None = Non
             switch_times.append(e.timestamp)
         elif e.kind == NOTIFICATION:
             notifications += 1
+            if _is_ai_source(str(e.meta.get("source", ""))):
+                ai_notifications += 1
         elif e.kind == MEETING:
             meeting_minutes += e.duration_minutes
             meeting_intervals.append((e.timestamp, e.timestamp + e.duration_minutes * 60.0))
@@ -131,4 +150,5 @@ def compute_features(events: Iterable[Event], window_minutes: float | None = Non
         notification_rate=notifications / window_hours,
         focus_ratio=max(0.0, min(focus_minutes / window, 1.0)),
         multitasking_index=max(0.0, min(multitasking_index, 1.0)),
+        ai_notification_rate=ai_notifications / window_hours,
     )

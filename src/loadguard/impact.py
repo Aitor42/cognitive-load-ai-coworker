@@ -80,6 +80,7 @@ def estimate_impact(
         notification_rate=features.notification_rate,
         focus_ratio=features.focus_ratio,
         multitasking_index=features.multitasking_index,
+        ai_notification_rate=features.ai_notification_rate,
     )
 
     if any(i.action == "batch" for i in plan.items):

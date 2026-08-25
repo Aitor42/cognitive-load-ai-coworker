@@ -87,6 +87,7 @@ def _apply_fatigue(features: FeatureSet, elapsed: float, total: float) -> Featur
         notification_rate=features.notification_rate * fatigue,
         focus_ratio=features.focus_ratio,
         multitasking_index=min(features.multitasking_index * fatigue, 1.0),
+        ai_notification_rate=features.ai_notification_rate,
     )
 
 
@@ -123,6 +124,7 @@ def project_end_of_day(
         notification_rate=blend(observed.notification_rate, remaining.notification_rate),
         focus_ratio=blend(observed.focus_ratio, remaining.focus_ratio),
         multitasking_index=blend(observed.multitasking_index, remaining.multitasking_index),
+        ai_notification_rate=blend(observed.ai_notification_rate, remaining.ai_notification_rate),
     )
 
     # Apply fatigue for scoring only; full_day retains the raw blended values.

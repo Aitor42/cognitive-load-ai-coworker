@@ -118,6 +118,59 @@ class TestRunMiddayReview(unittest.TestCase):
         self.assertTrue(review.projected_level)
         self.assertEqual(review.remaining_minutes, 240.0)
 
+    def test_completed_tasks_excluded_from_midday_replan(self) -> None:
+        """Midday review only replans tasks not in completed_task_ids."""
+        tasks = [
+            Task(id="a", title="Done", priority=5),
+            Task(id="b", title="Remaining", priority=4),
+        ]
+        review = run_midday_review(
+            _overload_events(),
+            tasks,
+            240.0,
+            480.0,
+            completed_task_ids={"a"},
+        )
+        if review.plan:
+            plan_task_ids = {i.task_id for i in review.plan.items if i.task_id}
+            self.assertNotIn("a", plan_task_ids)
+
+
+class TestFatigueFactor(unittest.TestCase):
+    """Tests for the time-of-day fatigue amplification."""
+
+    def test_fatigue_amplifies_projected_score(self) -> None:
+        """Projection with elapsed time should score higher than without."""
+        from loadguard.projection import _apply_fatigue
+
+        base = FeatureSet(context_switches_per_hour=6.0, notification_rate=10.0)
+        fatigued = _apply_fatigue(base, elapsed=240.0, total=480.0)
+        # 240/480 = 0.5 -> fatigue = 1 + 0.15*0.5 = 1.075
+        self.assertAlmostEqual(fatigued.context_switches_per_hour, 6.0 * 1.075)
+        self.assertAlmostEqual(fatigued.notification_rate, 10.0 * 1.075)
+
+    def test_fatigue_clamps_multitasking_to_one(self) -> None:
+        from loadguard.projection import _apply_fatigue
+
+        base = FeatureSet(multitasking_index=0.95)
+        fatigued = _apply_fatigue(base, elapsed=480.0, total=480.0)
+        self.assertLessEqual(fatigued.multitasking_index, 1.0)
+
+    def test_no_fatigue_when_zero_elapsed(self) -> None:
+        from loadguard.projection import _apply_fatigue
+
+        base = FeatureSet(context_switches_per_hour=6.0)
+        result = _apply_fatigue(base, elapsed=0.0, total=480.0)
+        self.assertEqual(result.context_switches_per_hour, 6.0)
+
+    def test_blended_features_unchanged_by_fatigue(self) -> None:
+        """full_day retains raw blended values; fatigue only affects load_report."""
+        observed = FeatureSet(context_switches_per_hour=6.0)
+        projection = project_end_of_day(observed, 240.0, 480.0)
+        # Blended feature should be 6.0 (same rate assumed for rest of day)
+        self.assertAlmostEqual(projection.full_day.context_switches_per_hour, 6.0)
+        # But the load_report.score should reflect fatigue (higher than raw)
+
 
 if __name__ == "__main__":
     unittest.main()

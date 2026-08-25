@@ -144,5 +144,95 @@ class TestWorkflow(unittest.TestCase):
         self.assertEqual(result.plan.proposed_by, "fake")
 
 
+class TestImpactCalibration(unittest.TestCase):
+    """Tests for history-based calibration and position-aware focus blocks."""
+
+    def test_calibration_with_improving_history(self):
+        """When scores are improving, calibration factor is close to 1.0."""
+        from loadguard.impact import _calibration_factor
+
+        # Steady drop: interventions are working
+        self.assertAlmostEqual(_calibration_factor([80, 70, 60, 50]), 1.0, places=1)
+
+    def test_calibration_with_flat_history(self):
+        """When scores are flat, calibration factor is below 1.0."""
+        from loadguard.impact import _calibration_factor
+
+        # No improvement: interventions aren't helping
+        result = _calibration_factor([60, 60, 60, 60])
+        self.assertLess(result, 1.0)
+
+    def test_calibration_with_short_history_returns_one(self):
+        from loadguard.impact import _calibration_factor
+
+        self.assertEqual(_calibration_factor([50, 60]), 1.0)
+        self.assertEqual(_calibration_factor(None), 1.0)
+        self.assertEqual(_calibration_factor([]), 1.0)
+        self.assertEqual(_calibration_factor([0.0, 0.0, 0.0, 0.0]), 1.0)
+
+    def test_impact_with_history_adjusts_projection(self):
+        """History-calibrated impact uses scaled reduction constants."""
+        features = FeatureSet(notification_rate=30.0, focus_ratio=0.05)
+        report = score(features)
+        from loadguard.recommender import build_plan
+
+        plan = build_plan([], report)
+        impact_no_hist = estimate_impact(features, plan)
+        impact_flat = estimate_impact(features, plan, history=[60, 60, 60, 60, 60, 60])
+        # Flat history -> smaller reductions -> smaller delta
+        self.assertLessEqual(impact_flat.delta, impact_no_hist.delta)
+        self.assertIn("calibration", impact_flat.assumptions)
+
+    def test_focus_block_position_affects_gain(self):
+        """A focus block at position 0 is more effective than one at the end."""
+        from loadguard.models import Plan, PlanItem
+
+        features = FeatureSet(focus_ratio=0.1)
+        report = score(features)
+        # Focus block at start
+        plan_early = Plan(
+            load_report=report,
+            items=[
+                PlanItem(position=1, action="focus_block", title="Focus"),
+                PlanItem(position=2, action="do", task_id="a", title="Work"),
+                PlanItem(position=3, action="do", task_id="b", title="Work2"),
+            ],
+        )
+        # Focus block at end
+        plan_late = Plan(
+            load_report=report,
+            items=[
+                PlanItem(position=1, action="do", task_id="a", title="Work"),
+                PlanItem(position=2, action="do", task_id="b", title="Work2"),
+                PlanItem(position=3, action="focus_block", title="Focus"),
+            ],
+        )
+        impact_early = estimate_impact(features, plan_early)
+        impact_late = estimate_impact(features, plan_late)
+        # Early focus block should reduce score more
+        self.assertGreater(impact_early.delta, impact_late.delta)
+
+
+class TestSchedulerReactiveCheck(unittest.TestCase):
+    """Tests for the reactive trigger in scheduler."""
+
+    def test_large_jump_triggers_recheck(self):
+        from loadguard.scheduler import REACTIVE_THRESHOLD, should_recheck
+
+        self.assertTrue(should_recheck(40.0, 40.0 + REACTIVE_THRESHOLD))
+        self.assertTrue(should_recheck(30.0, 60.0))
+
+    def test_small_change_does_not_trigger(self):
+        from loadguard.scheduler import should_recheck
+
+        self.assertFalse(should_recheck(50.0, 55.0))
+        self.assertFalse(should_recheck(50.0, 50.0))
+
+    def test_drop_does_not_trigger(self):
+        from loadguard.scheduler import should_recheck
+
+        self.assertFalse(should_recheck(70.0, 50.0))
+
+
 if __name__ == "__main__":
     unittest.main()

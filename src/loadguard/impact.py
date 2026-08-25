@@ -4,6 +4,13 @@ Projects the Cognitive Load Score *after* the plan is followed, so the project's
 value is measured rather than asserted. Every assumption is conservative and
 documented; the estimator deliberately never claims to eliminate load, only to
 reduce the interruption-driven portion of it.
+
+Two additional refinements improve accuracy:
+
+- **History-based calibration**: when past score history is available, reduction
+  constants are scaled down if historical interventions under-delivered.
+- **Position-aware focus blocks**: a focus block placed early in the plan
+  protects more cognitive resources than one placed at the end.
 """
 
 from __future__ import annotations
@@ -19,6 +26,10 @@ FOCUS_GAIN_PER_BLOCK = 0.10  # each focus block adds ~10% focus share
 MULTITASK_REDUCTION = 0.30  # breaks reduce multitasking by 30%
 CONTEXT_REDUCTION_PER_DELEGATION = 0.10  # each delegated task cuts switches 10%
 
+# Focus blocks placed at the end of the plan lose up to this fraction of their
+# effectiveness compared to one placed at the very start.
+POSITION_DECAY = 0.5
+
 
 @dataclass
 class ImpactResult:
@@ -30,8 +41,34 @@ class ImpactResult:
     assumptions: dict[str, str]
 
 
-def estimate_impact(features: FeatureSet, plan: Plan) -> ImpactResult:
+def _calibration_factor(history: list[float] | None) -> float:
+    """Scale factor for impact reductions, learned from score history.
+
+    A factor < 1.0 means past interventions under-delivered, so projections
+    are made more conservative.  A factor > 1.0 is capped at 1.0 because
+    LoadGuard deliberately never over-promises.
+    """
+    if not history or len(history) < 4:
+        return 1.0
+    recent = history[-6:]
+    mid = len(recent) // 2
+    first_half = sum(recent[:mid]) / mid
+    second_half = sum(recent[mid:]) / (len(recent) - mid)
+    if first_half <= 0:
+        return 1.0
+    improvement = max(first_half - second_half, 0.0) / first_half
+    # Scale: 0% improvement -> factor 0.5; >=20% improvement -> factor 1.0.
+    return min(0.5 + improvement * 2.5, 1.0)
+
+
+def estimate_impact(
+    features: FeatureSet,
+    plan: Plan,
+    history: list[float] | None = None,
+) -> ImpactResult:
     """Estimate the before/after Cognitive Load Score given a plan."""
+    cal = _calibration_factor(history)
+
     projected = FeatureSet(
         context_switches_per_hour=features.context_switches_per_hour,
         meeting_ratio=features.meeting_ratio,
@@ -41,18 +78,27 @@ def estimate_impact(features: FeatureSet, plan: Plan) -> ImpactResult:
     )
 
     if any(i.action == "batch" for i in plan.items):
-        projected.notification_rate *= NOTIFICATION_REDUCTION
+        effective = 1.0 - (1.0 - NOTIFICATION_REDUCTION) * cal
+        projected.notification_rate *= effective
 
-    focus_blocks = [i for i in plan.items if i.action == "focus_block"]
-    for _ in focus_blocks:
-        projected.focus_ratio = min(projected.focus_ratio + FOCUS_GAIN_PER_BLOCK, 1.0)
+    # Position-aware focus blocks: earlier blocks protect more cognitive
+    # resources than later ones.
+    plan_len = max(len(plan.items) - 1, 1)
+    for idx, item in enumerate(plan.items):
+        if item.action == "focus_block":
+            progress = idx / plan_len if len(plan.items) > 1 else 0.0
+            position_factor = 1.0 - POSITION_DECAY * progress
+            projected.focus_ratio = min(
+                projected.focus_ratio + FOCUS_GAIN_PER_BLOCK * position_factor * cal,
+                1.0,
+            )
 
     if any(i.action == "break" for i in plan.items):
-        projected.multitasking_index *= 1.0 - MULTITASK_REDUCTION
+        projected.multitasking_index *= 1.0 - MULTITASK_REDUCTION * cal
 
     delegated = [i for i in plan.items if i.action == "delegate"]
     for _ in delegated:
-        projected.context_switches_per_hour *= 1.0 - CONTEXT_REDUCTION_PER_DELEGATION
+        projected.context_switches_per_hour *= 1.0 - CONTEXT_REDUCTION_PER_DELEGATION * cal
 
     before = score(features)
     after = score(projected)
@@ -65,8 +111,9 @@ def estimate_impact(features: FeatureSet, plan: Plan) -> ImpactResult:
         delta=round(before.score - after.score, 1),
         assumptions={
             "batch": f"notification rate x{NOTIFICATION_REDUCTION}",
-            "focus_block": f"+{FOCUS_GAIN_PER_BLOCK} focus share each",
+            "focus_block": f"+{FOCUS_GAIN_PER_BLOCK} focus share each (position-adjusted)",
             "break": f"multitasking x{1 - MULTITASK_REDUCTION}",
             "delegate": f"context switches x{1 - CONTEXT_REDUCTION_PER_DELEGATION} each",
+            "calibration": f"{cal:.2f} (from {len(history) if history else 0} history points)",
         },
     )

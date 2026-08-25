@@ -1,31 +1,62 @@
 """Deterministic planner: resequence, delegate, and insert recovery blocks.
 
-The planner is intentionally rule-based and transparent. It produces only the
+The planner is intentionally rule-based and transparent.  It produces only the
 structured plan; the narrative is added separately by the Narrator agent.
 """
 
 from __future__ import annotations
 
-from .models import HIGH, OVERLOAD, TODO, LoadReport, Plan, PlanItem, Task
+from .availability import is_absent
+from .models import HIGH, OVERLOAD, TODO, LoadReport, Plan, PlanItem, Task, Worker
 
 # Notification rate (per hour) above which we suggest batching.
 BATCH_THRESHOLD = 20.0
 # Focus ratio below which we schedule a focus block.
 LOW_FOCUS_THRESHOLD = 0.2
+# Accumulated work minutes before inserting a recovery break (ultradian rhythm).
+BREAK_CADENCE_MINUTES = 90.0
 
 # Max task priority (1..5) that gets delegated at each load level.
 DELEGATE_MAX_PRIORITY = {OVERLOAD: 2, HIGH: 1}
 
 
-def _sort_key(task: Task) -> tuple[float, float]:
+def _sort_key(task: Task, level: str) -> tuple[float, float, float]:
+    """Sort key: primary=priority, secondary=duration (quick-win), tertiary=deadline.
+
+    In HIGH/OVERLOAD load, shorter tasks of the same priority are scheduled
+    first (quick-win effect): completing them early frees cognitive slots and
+    builds momentum.  Under lower load the duration tiebreaker is disabled.
+    """
     deadline = task.deadline if task.deadline is not None else float("inf")
-    return (-float(task.priority), deadline)
+    duration_bonus = task.duration_minutes if level in (HIGH, OVERLOAD) else 0.0
+    return (-float(task.priority), duration_bonus, deadline)
 
 
-def build_plan(tasks: list[Task], load_report: LoadReport) -> Plan:
+def _available_workers(
+    workers: list[Worker],
+    exclude_id: str | None,
+    now: float | None,
+) -> list[str]:
+    """Return IDs of workers not currently absent, excluding *exclude_id*."""
+    result: list[str] = []
+    for w in workers:
+        if w.id == exclude_id:
+            continue
+        if now is not None and is_absent(w.absences, now):
+            continue
+        result.append(w.id)
+    return result
+
+
+def build_plan(
+    tasks: list[Task],
+    load_report: LoadReport,
+    workers: list[Worker] | None = None,
+    now: float | None = None,
+) -> Plan:
     """Build a resequenced plan (structure only) from tasks and a load report."""
-    ordered = sorted(tasks, key=_sort_key)
     level = load_report.level
+    ordered = sorted(tasks, key=lambda t: _sort_key(t, level))
     delegate_max = DELEGATE_MAX_PRIORITY.get(level, 0)
 
     items: list[PlanItem] = []
@@ -52,30 +83,39 @@ def build_plan(tasks: list[Task], load_report: LoadReport) -> Plan:
             rationale="High notification rate; consolidate alerts into scheduled check-ins.",
         )
 
-    do_count = 0
+    accumulated_work = 0.0
     for task in ordered:
         if task.status != TODO:
             continue
         if task.priority <= delegate_max:
-            add(
-                "delegate",
-                task,
-                rationale=f"Priority {task.priority}/5 and load is {level}; hand off to protect attention.",
+            rationale = (
+                f"Priority {task.priority}/5 and load is {level}; hand off to protect attention."
             )
+            # Suggest available teammates when worker information is provided.
+            if workers is not None:
+                candidates = _available_workers(workers, task.assignee, now)
+                if candidates:
+                    rationale += f" Suggested: {', '.join(candidates[:3])}."
+                else:
+                    rationale += " Warning: no available teammates found."
+            add("delegate", task, rationale=rationale)
         else:
             add(
                 "do",
                 task,
                 rationale=f"Priority {task.priority}/5; keep in focus order (deadline-aware).",
             )
-            do_count += 1
-            # Protect attention during high-load windows with periodic breaks.
-            if level in (HIGH, OVERLOAD) and do_count % 2 == 0:
+            accumulated_work += task.duration_minutes
+            # Time-based breaks: insert after every BREAK_CADENCE_MINUTES of
+            # accumulated work instead of a fixed task count, so two 5-minute
+            # tasks don't trigger a needless break while a 3-hour task does.
+            if level in (HIGH, OVERLOAD) and accumulated_work >= BREAK_CADENCE_MINUTES:
                 add(
                     "break",
                     title="Recovery break",
                     rationale="Insert rest to avoid overload buildup.",
                 )
+                accumulated_work = 0.0
 
     # Schedule a focus block when focus time is scarce or load is elevated.
     # Insert it *before* the first deep-work task so the developer starts with

@@ -43,9 +43,11 @@ class TestExportIcs(unittest.TestCase):
     def test_contains_focus_and_break_events(self):
         ics = export_ics(_plan(), _tasks(), start_epoch=1_700_000_000.0)
         self.assertIn("BEGIN:VCALENDAR", ics)
-        self.assertEqual(ics.count("BEGIN:VEVENT"), 2)  # focus + break only
+        self.assertEqual(ics.count("BEGIN:VEVENT"), 3)  # focus + do task + break
         self.assertIn("Focus block (no notifications)", ics)
         self.assertIn("Recovery break", ics)
+        self.assertIn("Critical fix", ics)
+        self.assertIn("CATEGORIES:LOADGUARD-TASK", ics)
         self.assertIn("DTSTART:20231114T221320Z", ics)  # 1700000000 -> Nov 14 2023 22:13:20Z
 
     def test_focus_block_duration_is_45min(self):

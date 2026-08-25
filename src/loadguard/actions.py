@@ -98,7 +98,20 @@ def export_ics(plan: Plan, tasks: list[Task], start_epoch: float | None = None) 
             lines.append("END:VEVENT")
             cursor += duration * 60.0
         elif item.action == "do" and item.task_id:
-            cursor += task_durations.get(item.task_id, 30.0) * 60.0
+            duration = task_durations.get(item.task_id, 30.0)
+            lines += [
+                "BEGIN:VEVENT",
+                f"UID:loadguard-{plan.plan_id or 'plan'}-{item.position}@loadguard",
+                f"DTSTAMP:{_ics_datetime(cursor)}",
+                f"DTSTART:{_ics_datetime(cursor)}",
+                f"DTEND:{_ics_datetime(cursor + duration * 60.0)}",
+                f"SUMMARY:{_ics_escape(item.title)}",
+                "CATEGORIES:LOADGUARD-TASK",
+            ]
+            if item.rationale:
+                lines.append(f"DESCRIPTION:{_ics_escape(item.rationale)}")
+            lines.append("END:VEVENT")
+            cursor += duration * 60.0
         elif item.action in ("delegate", "batch"):
             cursor += MINOR_STEP_MINUTES * 60.0
     lines.append("END:VCALENDAR")

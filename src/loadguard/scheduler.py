@@ -6,6 +6,10 @@ LoadGuard's schedule has two beats:
 2. **Midday** — re-score the day so far, project the remaining hours, and
    re-organize the plan when the projected end-of-day load is high/overload.
 
+A **reactive trigger** (``should_recheck``) supplements the fixed schedule:
+when the cognitive load score jumps more than ``REACTIVE_THRESHOLD`` points
+between any two consecutive readings, an immediate re-evaluation is warranted.
+
 Both steps are pure, deterministic functions so they can be driven by cron, an
 in-process loop, or any orchestration layer — no new dependencies required.
 """
@@ -19,6 +23,10 @@ from .models import Event, Task, Worker
 from .projection import MiddayReview, run_midday_review
 from .workflow import WorkflowResult, run_workflow
 
+# Score jump (points on the 0..100 scale) that triggers an immediate
+# re-evaluation outside the fixed morning/midday schedule.
+REACTIVE_THRESHOLD = 15.0
+
 
 @dataclass
 class DailyCycle:
@@ -26,6 +34,16 @@ class DailyCycle:
 
     morning: WorkflowResult
     midday: MiddayReview
+
+
+def should_recheck(previous_score: float, current_score: float) -> bool:
+    """Return True if the score jumped enough to warrant immediate re-evaluation.
+
+    This supplements the fixed morning/midday schedule: when the cognitive load
+    score rises by more than ``REACTIVE_THRESHOLD`` between any two readings,
+    the plan should be re-assessed without waiting for the next scheduled beat.
+    """
+    return current_score - previous_score >= REACTIVE_THRESHOLD
 
 
 def run_daily_cycle(

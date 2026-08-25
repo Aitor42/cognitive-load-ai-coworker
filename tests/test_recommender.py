@@ -94,6 +94,74 @@ class TestBuildPlan(unittest.TestCase):
         plan = build_plan([], report)
         self.assertEqual([i.action for i in plan.items], ["focus_block"])
 
+    def test_quick_win_sorts_shorter_tasks_first_in_overload(self) -> None:
+        """In HIGH/OVERLOAD, shorter tasks of the same priority come first."""
+        tasks = [
+            Task(id="long", title="Long", priority=5, duration_minutes=120.0),
+            Task(id="short", title="Short", priority=5, duration_minutes=15.0),
+        ]
+        plan = build_plan(tasks, _overload_report())
+        do_items = [i for i in plan.items if i.action == "do"]
+        self.assertEqual(do_items[0].task_id, "short")
+        self.assertEqual(do_items[1].task_id, "long")
+
+    def test_quick_win_disabled_under_low_load(self) -> None:
+        """Under low load, same-priority tasks sort by deadline, not duration."""
+        report = score(FeatureSet(focus_ratio=0.9))
+        tasks = [
+            Task(id="long", title="Long", priority=5, duration_minutes=120.0, deadline=100.0),
+            Task(id="short", title="Short", priority=5, duration_minutes=15.0, deadline=200.0),
+        ]
+        plan = build_plan(tasks, report)
+        do_items = [i for i in plan.items if i.action == "do"]
+        self.assertEqual(do_items[0].task_id, "long")  # earlier deadline wins
+
+    def test_time_based_break_after_90_minutes(self) -> None:
+        """Breaks are inserted after 90 min of accumulated work, not after 2 tasks."""
+        tasks = [
+            Task(id="a", title="A", priority=5, duration_minutes=50.0),
+            Task(id="b", title="B", priority=5, duration_minutes=50.0),
+            Task(id="c", title="C", priority=5, duration_minutes=50.0),
+        ]
+        plan = build_plan(tasks, _overload_report())
+        actions = [i.action for i in plan.items]
+        # Break after 100 min (2 x 50), not after task count
+        do_and_break = [a for a in actions if a in ("do", "break")]
+        self.assertEqual(do_and_break, ["do", "do", "break", "do"])
+
+    def test_no_break_for_short_tasks(self) -> None:
+        """Two very short tasks don't trigger a break under time-based cadence."""
+        tasks = [
+            Task(id="a", title="A", priority=5, duration_minutes=10.0),
+            Task(id="b", title="B", priority=5, duration_minutes=10.0),
+        ]
+        plan = build_plan(tasks, _overload_report())
+        actions = [i.action for i in plan.items]
+        self.assertNotIn("break", actions)
+
+    def test_delegation_suggests_available_workers(self) -> None:
+        """When workers are provided, delegation rationale names available teammates."""
+        from loadguard.models import Worker
+
+        workers = [Worker(id="alice"), Worker(id="bob")]
+        tasks = [Task(id="a", title="Admin", priority=1, assignee="alice")]
+        plan = build_plan(tasks, _overload_report(), workers=workers, now=0.0)
+        delegated = [i for i in plan.items if i.action == "delegate"]
+        self.assertEqual(len(delegated), 1)
+        self.assertIn("bob", delegated[0].rationale)
+
+    def test_delegation_warns_when_no_workers_available(self) -> None:
+        """Warn in rationale when all teammates are absent."""
+        from loadguard.models import Absence, Worker
+
+        workers = [
+            Worker(id="alice", absences=[Absence(start=0.0, end=9999.0)]),
+        ]
+        tasks = [Task(id="a", title="Admin", priority=1, assignee="bob")]
+        plan = build_plan(tasks, _overload_report(), workers=workers, now=0.0)
+        delegated = [i for i in plan.items if i.action == "delegate"]
+        self.assertIn("Warning: no available teammates", delegated[0].rationale)
+
 
 if __name__ == "__main__":
     unittest.main()

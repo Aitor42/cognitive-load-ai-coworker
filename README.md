@@ -225,8 +225,15 @@ extracts out-of-office / vacation events as absences (never the reason).
   (`scripts/schedule.py`) built on the same deterministic functions as the interactive loop.
 - **At-a-glance dashboard** — a one-line summary with expandable details, so the report reads
   quickly without hiding the reasoning.
+- **Purpose-first dashboard** — the web UI walks the sense → diagnose → propose → validate →
+  decide → act/measure loop with the actual state of the run, shows what Granite proposed
+  before the deterministic gate, and lists the documented assumptions behind every projected
+  score reduction.
+- **Bring your own signals** — upload a real `.ics` calendar or `.jsonl` event log straight
+  from the dashboard (`POST /ingest`), no terminal required.
 - **Measurable impact, honestly labelled** — *projected* before/after score, plus *observed*
-  metrics when outcome signals are supplied (`demo/benchmark.py --pilot`).
+  metrics when outcome signals are supplied (`demo/benchmark.py --pilot` and the dashboard's
+  pilot evaluation section; observed is never fabricated).
 - **Real LangGraph orchestration** — `StateGraph` with an explicit human-approval gate.
 - **IBM Bob MCP server** — `mcp_server/` exposes the pipeline (propose, approve, export, evaluate)
   as MCP tools so IBM Bob can drive it.
@@ -304,13 +311,16 @@ python mcp_server/server.py --self-test
 ```bash
 pip install -r requirements.txt
 python app.py
-# GET  /                          -> interactive dashboard (accept/edit/reject + timeline + privacy)
+# GET  /                          -> interactive dashboard (loop + accept/edit/reject + timeline + privacy + pilot)
 # POST /analyze                   -> {"events": [...], "tasks": [...], "workers": [...]} + proposal + guardian + trend + reassignment alerts
-# POST /midday                    -> projected end-of-day score + optional re-organization
-# POST /approve | /feedback       -> record the human decision
+# POST /ingest                    -> parse uploaded .ics calendar or .jsonl event log into events
+# POST /midday                    -> projected end-of-day score + optional re-organization (approvable/exportable)
+# POST /approve | /feedback       -> record the human decision (edited plans recompute the projected impact)
+# GET|POST /pilot                 -> baseline vs. projected vs. observed pilot evaluation (observed only with real outcome signals)
 # GET  /plan/{id}/export.ics      -> protected-blocks calendar
 # GET  /plan/{id}/export.csv      -> resequenced task list
 # GET|POST|DELETE /history        -> personal baseline (deletable)
+# GET  /audit | DELETE /audit     -> local audit trail of human decisions
 # GET  /privacy                   -> exactly what is / isn't captured
 # GET  /health
 ```

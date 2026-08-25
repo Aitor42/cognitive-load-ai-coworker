@@ -252,7 +252,7 @@ function render(r){
 
   const status=esc(r.plan.status);
   const alerts=(r.reassignment_alerts||[]);
-  const summary=`<div class="summaryline">Load <b>${esc(lr.level)}</b> · ${imp.before_score.toFixed(0)}/100 →
+  const summary=`<div class="summaryline" id="summaryLine">Load <b>${esc(lr.level)}</b> · ${imp.before_score.toFixed(0)}/100 →
     <b>${imp.after_score.toFixed(0)}</b> after plan (↓ ${imp.delta} pts) ·
     ${r.plan.items.length} actions · ${alerts.length} pending reassignment(s)</div>`;
 
@@ -263,10 +263,10 @@ function render(r){
         <div><div class="meta">Before</div><div class="big">${imp.before_score.toFixed(0)}<span style="font-size:20px">/100</span></div>
           <div class="level">${esc(imp.before_level)}</div>
           <div class="bar">${gauge(imp.before_score)}${r.baseline?bm():""}</div>${trendHtml}</div>
-        <div><div class="meta">After following the plan</div><div class="big">${imp.after_score.toFixed(0)}<span style="font-size:20px">/100</span></div>
-          <div class="level">${esc(imp.after_level)}</div>
-          <div class="bar">${gauge(imp.after_score)}</div>
-          <div class="delta">↓ ${imp.delta} points projected</div></div>
+        <div><div class="meta">After following the plan</div><div class="big" id="afterScore">${imp.after_score.toFixed(0)}<span style="font-size:20px">/100</span></div>
+          <div class="level" id="afterLevel">${esc(imp.after_level)}</div>
+          <div class="bar" id="afterBar">${gauge(imp.after_score)}</div>
+          <div class="delta" id="deltaLine">↓ ${imp.delta} points projected</div></div>
       </div>
     </div>
 
@@ -350,6 +350,15 @@ async function saveEdit(){
       body:JSON.stringify({plan_id:PLAN_ID,decision:"edited",items:kept,feedback:"removed: "+removed.join(", ")})});
     document.querySelectorAll(".actions button").forEach(b=>b.disabled=true);
     updateStatusLine(r.status);
+    if(r.impact){
+      const imp=r.impact;
+      const byId=(id)=>document.getElementById(id);
+      if(byId("afterScore")) byId("afterScore").innerHTML=imp.after_score.toFixed(0)+'<span style="font-size:20px">/100</span>';
+      if(byId("afterLevel")) byId("afterLevel").textContent=imp.after_level;
+      if(byId("afterBar")) byId("afterBar").innerHTML=gauge(imp.after_score);
+      if(byId("deltaLine")) byId("deltaLine").textContent="↓ "+imp.delta+" points projected (customized plan)";
+      if(byId("summaryLine")) byId("summaryLine").innerHTML=`Load <b>${esc(imp.after_level)}</b> · ${imp.before_score.toFixed(0)}/100 → <b>${imp.after_score.toFixed(0)}</b> after plan (↓ ${imp.delta} pts) · customized edit`;
+    }
   }catch(e){document.getElementById("err").textContent="⚠ "+e.message;}
 }
 

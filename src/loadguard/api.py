@@ -30,10 +30,11 @@ from .actions import (
 from .baseline import append_score, clear_history, load_history
 from .config import get_guardian_model, get_model
 from .guardian import validate_plan
+from .impact import estimate_impact
 from .models import Absence, LoadReport, Plan, PlanItem, Task, Worker
 from .projection import run_midday_review
 from .sample_data import sample_tasks, sample_workers
-from .signals import load_events, parse_event
+from .signals import compute_features, load_events, parse_event
 from .workflow import WorkflowResult, run_workflow
 
 app = FastAPI(
@@ -257,6 +258,13 @@ def approve(req: ApproveRequest) -> dict[str, Any]:
                 detail=f"edited plan failed the safety gate: {guard.summary()}",
             )
         stored["payload"]["plan"]["items"] = cleaned
+    impact: dict[str, Any] | None = None
+    if req.items is not None:
+        # The edited plan changes what will actually be applied, so the
+        # projected before/after score must be recomputed from the stored
+        # signals rather than showing the original (stale) estimate.
+        features = compute_features([parse_event(e) for e in stored["events"]])
+        impact = asdict(estimate_impact(features, plan))
     decision = req.decision if req.decision in APPROVAL_DECISIONS else "rejected"
     record = record_approval(
         req.plan_id,
@@ -270,6 +278,7 @@ def approve(req: ApproveRequest) -> dict[str, Any]:
         "plan_id": req.plan_id,
         "status": decision,
         "audit": record.__dict__,
+        "impact": impact,
     }
 
 

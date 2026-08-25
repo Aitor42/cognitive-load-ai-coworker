@@ -107,6 +107,33 @@ class TestApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(PLANS[pid]["payload"]["plan"]["items"]), 2)
 
+    def test_edit_plan_recomputes_impact(self) -> None:
+        """Saving an edited plan must return a fresh before/after projection."""
+        data = self._analyze()
+        pid = data["plan_id"]
+        original_delta = data["impact"]["delta"]
+        # Re-submitting the same items recomputes the same projection.
+        resp = self.client.post(
+            "/approve",
+            json={"plan_id": pid, "decision": "edited", "items": data["plan"]["items"]},
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertIn("impact", body)
+        self.assertIsNotNone(body["impact"])
+        imp = body["impact"]
+        for key in ("before_score", "after_score", "delta"):
+            self.assertIn(key, imp)
+        self.assertAlmostEqual(imp["delta"], original_delta, places=1)
+        self.assertGreaterEqual(imp["delta"], 0.0)
+
+    def test_approve_without_edit_returns_no_impact(self) -> None:
+        data = self._analyze()
+        pid = data["plan_id"]
+        resp = self.client.post("/approve", json={"plan_id": pid, "decision": "accepted"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertIsNone(resp.json()["impact"])
+
     def test_unknown_plan_returns_404(self) -> None:
         resp = self.client.post("/approve", json={"plan_id": "nope", "decision": "accepted"})
         self.assertEqual(resp.status_code, 404)

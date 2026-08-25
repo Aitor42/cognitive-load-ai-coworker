@@ -333,6 +333,11 @@ function render(r){
       <div class="privacy" id="privacyBox">loading…</div>
       <div class="actions"><button class="red" onclick="deleteHistory()">Delete my history</button></div>
     </details>
+    <details class="section"><summary>🔬 Pilot evaluation (Baseline vs. Projected vs. Observed)</summary>
+      <div class="meta">Three-phase measurement: the day without LoadGuard, the plan it proposes, and real outcome signals recorded after following it. Observed is only shown when real outcome signals are supplied — never fabricated.</div>
+      <div id="pilotBox" class="meta" style="margin-top:10px"></div>
+      <div class="actions"><button class="ghost" onclick="pilotRun()">Run pilot evaluation</button></div>
+    </details>
 
     <div class="disc" id="disclaimer">${esc(lr.disclaimer)}</div>`;
   updateStatusLine(status);
@@ -456,6 +461,21 @@ async function feedback(helpful){
     await api("/feedback",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({plan_id:PLAN_ID,helpful,feedback:note})});
     document.getElementById("feedback").innerHTML='<div class="meta">Thanks — your feedback is recorded in the local audit trail.</div>';
+  }catch(e){document.getElementById("err").textContent="⚠ "+e.message;}
+}
+
+async function pilotRun(){
+  document.getElementById("err").textContent="";
+  const box=document.getElementById("pilotBox");
+  if(!box) return;
+  try{
+    const r=await api("/pilot");
+    const col=(label,pm)=>`<div><div class="meta">${label}</div><div class="big" style="font-size:32px">${pm.score.toFixed(0)}</div><div class="level">${esc(pm.level)}</div></div>`;
+    const obs=r.observed
+      ? col("Observed", r.observed)
+      : `<div><div class="meta">Observed</div><div class="big" style="font-size:32px">—</div><div class="meta">needs real outcome signals</div></div>`;
+    box.innerHTML=`<div class="grid" style="margin-top:0;grid-template-columns:1fr 1fr 1fr">${col("Baseline", r.baseline)}${col("Projected", r.projected)}${obs}</div>
+      <div class="summaryline" style="margin-top:10px">${esc(r.summary)}</div>`;
   }catch(e){document.getElementById("err").textContent="⚠ "+e.message;}
 }
 

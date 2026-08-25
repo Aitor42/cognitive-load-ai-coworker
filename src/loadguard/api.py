@@ -31,6 +31,7 @@ from .actions import (
     record_approval,
 )
 from .baseline import append_score, clear_history, load_history
+from .benchmark import run_pilot_evaluation
 from .config import get_guardian_model, get_model
 from .guardian import validate_plan
 from .impact import estimate_impact
@@ -93,6 +94,12 @@ class HistoryRequest(BaseModel):
 class IngestRequest(BaseModel):
     text: str
     format: Optional[str] = None  # "ics" | "jsonl"; auto-detected when omitted
+
+
+class PilotRequest(BaseModel):
+    events: Optional[list[dict[str, Any]]] = None
+    tasks: Optional[list[dict[str, Any]]] = None
+    outcome_events: Optional[list[dict[str, Any]]] = None  # real post-plan signals
 
 
 def _parse_bool(val: Any, default: bool = True) -> bool:
@@ -185,15 +192,41 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+def _sample_events() -> list[Any]:
+    """The demo day's events, used by /sample and the pilot evaluation."""
+    path = Path(__file__).resolve().parents[2] / "demo" / "sample_events.jsonl"
+    return load_events(path)
+
+
 @app.get("/sample")
 def sample() -> dict[str, Any]:
-    path = Path(__file__).resolve().parents[2] / "demo" / "sample_events.jsonl"
-    events = load_events(path)
+    events = _sample_events()
     return {
         "events": [asdict(e) for e in events],
         "tasks": [asdict(t) for t in sample_tasks()],
         "workers": [asdict(w) for w in sample_workers()],
     }
+
+
+@app.get("/pilot")
+def pilot() -> dict[str, Any]:
+    """Three-phase pilot evaluation on the demo day (baseline vs. projected).
+
+    The observed phase is only ever reported when real outcome signals are
+    supplied; without them the result is explicitly labelled a projection.
+    """
+    result = run_pilot_evaluation(_sample_events(), sample_tasks())
+    return asdict(result)
+
+
+@app.post("/pilot")
+def pilot_custom(req: PilotRequest) -> dict[str, Any]:
+    """Pilot evaluation over uploaded signals, with real outcome events when given."""
+    events = [parse_event(e) for e in req.events] if req.events is not None else _sample_events()
+    tasks = _to_tasks(req.tasks) if req.tasks is not None else sample_tasks()
+    outcome = [parse_event(e) for e in req.outcome_events] if req.outcome_events else None
+    result = run_pilot_evaluation(events, tasks, outcome_events=outcome)
+    return asdict(result)
 
 
 @app.post("/ingest")

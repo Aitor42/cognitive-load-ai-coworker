@@ -437,6 +437,36 @@ class TestApi(unittest.TestCase):
                 api_module._capture_signals_module()
         api_module._capture_signals_module.cache_clear()
 
+    def test_pilot_endpoint_reports_projection_without_outcome(self) -> None:
+        resp = self.client.get("/pilot")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn("baseline", data)
+        self.assertIn("projected", data)
+        self.assertIn("observed", data)
+        self.assertFalse(data["has_observed"])
+        self.assertIsNone(data["observed"])
+        self.assertIn("projection", data["summary"])
+
+    def test_pilot_with_outcome_events_reports_observed(self) -> None:
+        sample = self.client.get("/sample").json()
+        # Outcome: the same day but only meetings and focus blocks (no
+        # interruptions) — real post-plan signals, so observed is honest.
+        outcome = [e for e in sample["events"] if e["kind"] in ("meeting", "focus_block")]
+        resp = self.client.post(
+            "/pilot",
+            json={
+                "events": sample["events"],
+                "tasks": sample["tasks"],
+                "outcome_events": outcome,
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data["has_observed"])
+        self.assertIsNotNone(data["observed"])
+        self.assertIn("observed", data["summary"])
+
 
 if __name__ == "__main__":
     unittest.main()

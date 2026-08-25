@@ -221,9 +221,26 @@ class TestCapture(unittest.TestCase):
 
     def test_parse_ics_datetime_unknown_tzid_falls_back_to_utc(self) -> None:
         self.assertEqual(
-            capture_signals._parse_ics_datetime("20260817T090000", "W. Europe Standard Time"),
+            capture_signals._parse_ics_datetime("20260817T090000", "Bogus Time Zone"),
             datetime(2026, 8, 17, 9, 0, tzinfo=timezone.utc).timestamp(),
         )
+
+    def test_parse_ics_datetime_windows_tzid(self) -> None:
+        from zoneinfo import ZoneInfo
+
+        expected = datetime(2026, 8, 17, 9, 0, tzinfo=ZoneInfo("Europe/Berlin")).timestamp()
+        self.assertEqual(
+            capture_signals._parse_ics_datetime("20260817T090000", "W. Europe Standard Time"),
+            expected,
+        )
+
+    def test_windows_tz_map_values_resolve(self) -> None:
+        """Every mapped Windows timezone must resolve via zoneinfo."""
+        from zoneinfo import ZoneInfo
+
+        for windows_name, iana in capture_signals._WINDOWS_TZ_MAP.items():
+            with self.subTest(windows_name=windows_name, iana=iana):
+                self.assertIsNotNone(ZoneInfo(iana))
 
     def test_parse_ics_datetime_malformed_raises(self) -> None:
         with self.assertRaises(ValueError):
@@ -245,6 +262,27 @@ class TestCapture(unittest.TestCase):
             self.assertEqual(
                 events[0].timestamp,
                 datetime(2026, 8, 17, 9, 0, tzinfo=ZoneInfo("Europe/Madrid")).timestamp(),
+            )
+            self.assertEqual(events[0].duration_minutes, 60.0)
+        finally:
+            path.unlink()
+
+    def test_parse_ics_respects_windows_tzid(self) -> None:
+        from zoneinfo import ZoneInfo
+
+        ics = (
+            "BEGIN:VCALENDAR\nVERSION:2.0\n"
+            "BEGIN:VEVENT\nUID:t1\nDTSTART;TZID=W. Europe Standard Time:20260817T090000\n"
+            "DTEND;TZID=W. Europe Standard Time:20260817T100000\nSUMMARY:Standup\nEND:VEVENT\n"
+            "END:VCALENDAR\n"
+        )
+        path = self._write_ics(ics)
+        try:
+            events = capture_signals.parse_ics(path)
+            self.assertEqual(len(events), 1)
+            self.assertEqual(
+                events[0].timestamp,
+                datetime(2026, 8, 17, 9, 0, tzinfo=ZoneInfo("Europe/Berlin")).timestamp(),
             )
             self.assertEqual(events[0].duration_minutes, 60.0)
         finally:

@@ -141,6 +141,22 @@ class TestCapture(unittest.TestCase):
         # DTSTART + DURATION:PT45M -> 45 minutes
         self.assertEqual(events[2].duration_minutes, 45.0)
 
+    def test_parse_calendar_text(self) -> None:
+        """parse_calendar_text parses ICS text without file I/O."""
+        ics = (
+            "BEGIN:VCALENDAR\nVERSION:2.0\n"
+            "BEGIN:VEVENT\nUID:m1\nDTSTART:20260817T090000Z\nDTEND:20260817T100000Z\n"
+            "SUMMARY:Standup\nEND:VEVENT\n"
+            "BEGIN:VEVENT\nUID:a1\nDTSTART;VALUE=DATE:20260817\nDTEND;VALUE=DATE:20260818\n"
+            "SUMMARY:Out of office\nEND:VEVENT\n"
+            "END:VCALENDAR\n"
+        )
+        events, absences = capture_signals.parse_calendar_text(ics)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(len(absences), 1)
+        self.assertEqual(events[0].meta["title"], "Standup")
+        self.assertEqual(absences[0].kind, LEAVE)
+
     def test_parse_calendar_matches_individual_parsers(self) -> None:
         """parse_calendar returns the same split as parse_ics + parse_absences."""
         ics = (

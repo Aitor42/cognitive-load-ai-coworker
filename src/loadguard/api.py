@@ -10,7 +10,10 @@ privacy endpoint describing exactly what is captured.
 
 from __future__ import annotations
 
+import importlib.util
+import json
 from dataclasses import asdict
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
 
@@ -87,6 +90,11 @@ class HistoryRequest(BaseModel):
     score: float = Field(ge=0.0, le=100.0)
 
 
+class IngestRequest(BaseModel):
+    text: str
+    format: Optional[str] = None  # "ics" | "jsonl"; auto-detected when omitted
+
+
 def _parse_bool(val: Any, default: bool = True) -> bool:
     if val is None:
         return default
@@ -115,6 +123,23 @@ def _to_tasks(payload: list[dict[str, Any]]) -> list[Task]:
         )
         for i, t in enumerate(payload)
     ]
+
+
+@lru_cache(maxsize=1)
+def _capture_signals_module() -> Any:
+    """Load ``scripts/capture_signals.py`` by path so the API reuses the ICS parser.
+
+    The script lives outside the package (it is a CLI), so it is loaded
+    explicitly rather than imported; its top-level code only defines constants
+    and helper functions, so importing it is side-effect free.
+    """
+    script = Path(__file__).resolve().parents[2] / "scripts" / "capture_signals.py"
+    spec = importlib.util.spec_from_file_location("capture_signals", script)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("could not locate scripts/capture_signals.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _to_workers(payload: list[dict[str, Any]]) -> list[Worker]:
@@ -169,6 +194,30 @@ def sample() -> dict[str, Any]:
         "tasks": [asdict(t) for t in sample_tasks()],
         "workers": [asdict(w) for w in sample_workers()],
     }
+
+
+@app.post("/ingest")
+def ingest(req: IngestRequest) -> dict[str, Any]:
+    """Parse raw uploaded signals (.ics calendar or .jsonl event log) into events."""
+    text = req.text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="empty payload")
+    fmt = (req.format or "").lower()
+    if fmt not in ("ics", "jsonl"):
+        fmt = "ics" if text.upper().startswith("BEGIN:VCALENDAR") else "jsonl"
+    if fmt == "ics":
+        events, _ = _capture_signals_module().parse_calendar_text(text)
+        return {"format": "ics", "events": [asdict(e) for e in events]}
+    parsed: list[Any] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        try:
+            parsed.append(parse_event(json.loads(line)))
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=f"invalid JSONL line: {exc}") from exc
+    return {"format": "jsonl", "events": [asdict(e) for e in parsed]}
 
 
 @app.post("/analyze")

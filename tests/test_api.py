@@ -381,6 +381,62 @@ class TestApi(unittest.TestCase):
         p = self.client.get("/privacy").json()
         self.assertIn("the medical or personal reason for an absence", p["never_captured"])
 
+    def test_ingest_jsonl(self) -> None:
+        text = (
+            "# comment\n\n"
+            '{"timestamp": "2026-08-17T09:00:00Z", "kind": "meeting", "duration_minutes": 30}\n'
+            '{"timestamp": "2026-08-17T09:05:00Z", "kind": "notification", "meta": {"source": "slack"}}\n'
+        )
+        resp = self.client.post("/ingest", json={"text": text, "format": "jsonl"})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["format"], "jsonl")
+        self.assertEqual(len(data["events"]), 2)
+        self.assertEqual(data["events"][1]["meta"]["source"], "slack")
+
+    def test_ingest_ics(self) -> None:
+        text = (
+            "BEGIN:VCALENDAR\nVERSION:2.0\n"
+            "BEGIN:VEVENT\nUID:m1\nDTSTART:20260817T090000Z\nDTEND:20260817T100000Z\n"
+            "SUMMARY:Standup\nEND:VEVENT\n"
+            "BEGIN:VEVENT\nUID:a1\nDTSTART;VALUE=DATE:20260817\nDTEND;VALUE=DATE:20260818\n"
+            "SUMMARY:Out of office\nEND:VEVENT\n"
+            "END:VCALENDAR\n"
+        )
+        resp = self.client.post("/ingest", json={"text": text, "format": "ics"})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["format"], "ics")
+        # Only the timed meeting becomes an event; the absence is separated.
+        self.assertEqual(len(data["events"]), 1)
+        self.assertEqual(data["events"][0]["meta"]["title"], "Standup")
+
+    def test_ingest_auto_detects_format(self) -> None:
+        ics = "BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nUID:m1\nDTSTART:20260817T090000Z\nEND:VEVENT\nEND:VCALENDAR\n"
+        resp = self.client.post("/ingest", json={"text": ics})
+        self.assertEqual(resp.json()["format"], "ics")
+        jsonl = '{"timestamp": "2026-08-17T09:00:00Z", "kind": "meeting"}\n'
+        resp = self.client.post("/ingest", json={"text": jsonl})
+        self.assertEqual(resp.json()["format"], "jsonl")
+
+    def test_ingest_empty_returns_400(self) -> None:
+        resp = self.client.post("/ingest", json={"text": "   "})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_ingest_invalid_jsonl_returns_400(self) -> None:
+        resp = self.client.post(
+            "/ingest",
+            json={"text": '{"timestamp": "2026-08-17T09:00:00Z", "kind": "meeting"}\nnot_json\n'},
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_ingest_reports_parser_missing(self) -> None:
+        api_module._capture_signals_module.cache_clear()
+        with mock.patch("loadguard.api.importlib.util.spec_from_file_location", return_value=None):
+            with self.assertRaises(RuntimeError):
+                api_module._capture_signals_module()
+        api_module._capture_signals_module.cache_clear()
+
 
 if __name__ == "__main__":
     unittest.main()

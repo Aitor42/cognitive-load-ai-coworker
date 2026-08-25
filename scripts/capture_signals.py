@@ -282,11 +282,10 @@ def _unfold(text: str) -> str:
     return "\n".join(unfolded)
 
 
-def _vevents(path: Path) -> list[tuple[dict[str, str], dict[str, str | None], bool]]:
+def _vevents_text(text: str) -> list[tuple[dict[str, str], dict[str, str | None], bool]]:
     """Return each VEVENT's properties, per-property TZID, and all-day flag."""
-    text = _unfold(path.read_text(encoding="utf-8"))
     out: list[tuple[dict[str, str], dict[str, str | None], bool]] = []
-    for block in re.findall(r"BEGIN:VEVENT(.*?)END:VEVENT", text, re.S):
+    for block in re.findall(r"BEGIN:VEVENT(.*?)END:VEVENT", _unfold(text), re.S):
         props: dict[str, str] = {}
         tzids: dict[str, str | None] = {}
         all_day = False
@@ -317,6 +316,11 @@ def _vevents(path: Path) -> list[tuple[dict[str, str], dict[str, str | None], bo
             continue
         out.append((props, tzids, all_day))
     return out
+
+
+def _vevents(path: Path) -> list[tuple[dict[str, str], dict[str, str | None], bool]]:
+    """Read a calendar file and return its VEVENT blocks (see ``_vevents_text``)."""
+    return _vevents_text(path.read_text(encoding="utf-8"))
 
 
 def _is_absence(props: dict[str, str], all_day: bool = False) -> bool:
@@ -511,17 +515,19 @@ def _event_occurrences(
     return [(s, s + duration) for s in _expand_rrule(start, rule, until, exdates)]
 
 
-def parse_calendar(path: Path) -> tuple[list[Event], list[Absence]]:
-    """Parse an ICS file once, returning ``(meeting events, absences)``.
+def _classify_vevents(
+    vevents: list[tuple[dict[str, str], dict[str, str | None], bool]],
+) -> tuple[list[Event], list[Absence]]:
+    """Split parsed VEVENTs into ``(meeting events, absences)`` in one pass.
 
-    The file is read a single time and each VEVENT is classified once:
-    absence (out-of-office / vacation) events become ``Absence`` records
-    (all-day or not), everything else becomes a ``meeting`` event, and
-    all-day non-absence events are skipped entirely.
+    Each VEVENT is classified once: absence (out-of-office / vacation)
+    events become ``Absence`` records (all-day or not), everything else
+    becomes a ``meeting`` event, and all-day non-absence events are skipped
+    entirely.
     """
     events: list[Event] = []
     absences: list[Absence] = []
-    for props, tzids, all_day in _vevents(path):
+    for props, tzids, all_day in vevents:
         try:
             if _is_absence(props, all_day):
                 absences.extend(
@@ -542,6 +548,21 @@ def parse_calendar(path: Path) -> tuple[list[Event], list[Absence]]:
             # One malformed VEVENT must not abort the whole calendar.
             print(f"warning: skipping malformed calendar event: {exc}", file=sys.stderr)
     return events, absences
+
+
+def parse_calendar(path: Path) -> tuple[list[Event], list[Absence]]:
+    """Parse an ICS file once, returning ``(meeting events, absences)``.
+
+    The file is read a single time and each VEVENT is classified once; see
+    ``_classify_vevents`` for the split. Absences can also be obtained from
+    raw text via ``parse_calendar_text``.
+    """
+    return _classify_vevents(_vevents(path))
+
+
+def parse_calendar_text(text: str) -> tuple[list[Event], list[Absence]]:
+    """Parse ICS text (no file I/O) into ``(meeting events, absences)``."""
+    return _classify_vevents(_vevents_text(text))
 
 
 def parse_ics(path: Path) -> list[Event]:

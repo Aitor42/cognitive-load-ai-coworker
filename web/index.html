@@ -92,6 +92,8 @@ details.section[open] summary{margin-bottom:12px}
     <option value="calm">Scenario: calm day</option>
   </select>
   <button onclick="run()">Run analysis</button>
+  <input type="file" id="fileInput" accept=".ics,.jsonl" style="display:none" onchange="handleFileUpload(event)">
+  <button class="ghost" onclick="document.getElementById('fileInput').click()">📁 Upload my signals (.ics / .jsonl)</button>
   <button class="ghost" onclick="middayReview()" id="middayBtn" disabled>Midday re-organization</button>
   <button class="ghost" onclick="saveToBaseline()" id="saveBaseline" disabled>Save today's score to baseline</button>
   <button class="ghost" onclick="loadHistory()">Show baseline history</button>
@@ -221,6 +223,33 @@ async function run(){
       ? "⚠ Cannot reach the API — run: pip install -r requirements.txt && python app.py"
       : "⚠ "+e.message;
   }
+}
+
+async function handleFileUpload(ev){
+  const file=ev.target.files&&ev.target.files[0];
+  if(!file) return;
+  document.getElementById("err").textContent="";
+  try{
+    const text=await file.text();
+    const fmt=file.name.toLowerCase().endsWith(".ics")?"ics":"jsonl";
+    const ing=await api("/ingest",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({text,format:fmt})});
+    if(!ing.events.length){
+      document.getElementById("err").textContent="⚠ No events found in that file.";
+      return;
+    }
+    const s=await api("/sample");
+    EVENTS=ing.events; WORKERS=s.workers||[]; TASKS=s.tasks||[];
+    const hist=await api("/history");
+    const r=await api("/analyze",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({events:EVENTS,tasks:TASKS,history:hist.history,workers:WORKERS})});
+    render(r);
+  }catch(e){
+    document.getElementById("err").textContent = e.message==="Failed to fetch"
+      ? "⚠ Cannot reach the API — run: pip install -r requirements.txt && python app.py"
+      : "⚠ "+e.message;
+  }
+  ev.target.value="";
 }
 
 function render(r){

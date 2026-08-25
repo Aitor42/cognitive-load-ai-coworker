@@ -1,7 +1,7 @@
 """Parametrized unit tests for the Cognitive Load Score engine (``scoring.py``).
 
 The score is the core business deliverable: a weighted, normalized 0-100 value
-computed from five behavioral proxies. Because it is pure logic with no I/O or
+computed from five behavioral proxies.  Because it is pure logic with no I/O or
 external dependencies, it is tested here with full white-box coverage using two
 complementary strategies.
 
@@ -9,17 +9,19 @@ Branch coverage
 ---------------
 Every decision outcome in the module is exercised:
 
-* ``_normalize`` — the ``maximum <= 0`` guard (both outcomes) and the three
-  clamp regions: ``value < 0``, ``0 <= value <= maximum`` and ``value > maximum``.
+* ``_normalize`` — the ``midpoint <= 0`` and ``value <= 0`` guards (both
+  outcomes) and the Hill function for positive inputs.
 * ``_level`` — all four bands and their exact boundaries (25 / 50 / 75) so that
   every ``score < upper`` outcome is taken.
 * ``_contributions`` — the focus inversion (``1 - focus``) and the per-factor
   clamp into ``[0, 1]``.
+* ``_interaction_bonus`` — non-zero only when meetings AND interruptions are
+  both elevated.
 
 Pairwise (All-Pairs) testing
 ----------------------------
-``score`` is a weighted sum of five independent factors, so the full 4x3x4x3x3
-cross-product (432 combinations) is redundant. An All-Pairs covering array is
+``score`` is a weighted sum of five independent factors plus an interaction
+term, so the full cross-product is redundant.  An All-Pairs covering array is
 built greedily from ``SCORE_PARAMETER_SPACE`` so that every *pair* of factor
 levels is exercised at least once, then verified for completeness before scoring.
 ``PAIRWISE_CASES`` additionally pins a handful of exact score/level anchors at
@@ -39,6 +41,7 @@ from loadguard.models import FeatureSet  # noqa: E402
 from loadguard.scoring import (  # noqa: E402
     _contributions,
     _explanation,
+    _interaction_bonus,
     _level,
     _normalize,
     score,
@@ -48,14 +51,15 @@ from loadguard.scoring import (  # noqa: E402
 # Parametrization tables
 # ---------------------------------------------------------------------------
 
-# (description, value, maximum, expected) — branch + clamp coverage of _normalize.
+# (description, value, midpoint, expected) — branch coverage of _normalize.
+# The Hill function returns value / (value + midpoint) for positive inputs.
 NORMALIZE_CASES = [
-    ("zero maximum short-circuits", 5.0, 0.0, 0.0),
-    ("negative maximum short-circuits", 5.0, -1.0, 0.0),
-    ("negative value clamps to zero", -3.0, 10.0, 0.0),
-    ("in-range value scales", 6.0, 12.0, 0.5),
-    ("value at maximum scales to one", 12.0, 12.0, 1.0),
-    ("over-maximum clamps to one", 99.0, 12.0, 1.0),
+    ("zero midpoint short-circuits", 5.0, 0.0, 0.0),
+    ("negative midpoint short-circuits", 5.0, -1.0, 0.0),
+    ("negative value returns zero", -3.0, 10.0, 0.0),
+    ("value equals midpoint gives half", 6.0, 6.0, 0.5),
+    ("double midpoint gives two-thirds", 12.0, 6.0, 2 / 3),
+    ("large value approaches one", 99.0, 1.0, 0.99),
 ]
 
 # (score, expected_level) — every band plus the exact boundary values.
@@ -71,45 +75,46 @@ LEVEL_CASES = [
 ]
 
 # (description, features, expected_level, expected_score)
-# Pairwise matrix: boundary values per factor so every factor pair is exercised
-# without the full cross-product. Expected scores are derived from the documented
-# formula: 100 * (0.30*switches + 0.20*meetings + 0.20*notifications
-#                + 0.15*(1 - focus) + 0.15*multitasking).
+# Expected scores are derived from the documented formula:
+# base = 0.30*cs_norm + 0.20*meeting + 0.20*notif_norm + 0.15*(1-focus)
+#        + 0.15*multitask
+# interaction = meeting * max(cs_norm, notif_norm) * 0.10
+# total = min(base + interaction, 1.0) * 100
 PAIRWISE_CASES = [
     ("all calm", FeatureSet(focus_ratio=1.0), "low", 0.0),
     ("no focus logged", FeatureSet(), "low", 15.0),
     (
-        "context switches at threshold",
+        "context switches at sigmoid midpoint x2",
         FeatureSet(context_switches_per_hour=12.0, focus_ratio=1.0),
-        "moderate",
-        30.0,
-    ),
-    (
-        "notifications at threshold",
-        FeatureSet(notification_rate=30.0, focus_ratio=1.0),
         "low",
         20.0,
+    ),
+    (
+        "notifications at high rate",
+        FeatureSet(notification_rate=30.0, focus_ratio=1.0),
+        "low",
+        15.0,
     ),
     ("meetings saturated", FeatureSet(meeting_ratio=1.0, focus_ratio=1.0), "low", 20.0),
     ("multitasking saturated", FeatureSet(multitasking_index=1.0, focus_ratio=1.0), "low", 15.0),
     (
-        "switches + notifications at threshold",
+        "switches + notifications both high",
         FeatureSet(context_switches_per_hour=12.0, notification_rate=30.0, focus_ratio=1.0),
-        "high",
-        50.0,
+        "moderate",
+        35.0,
     ),
     (
-        "switches at threshold, meetings full, no focus",
+        "switches + meetings + no focus (interaction kicks in)",
         FeatureSet(context_switches_per_hour=12.0, meeting_ratio=1.0, focus_ratio=0.0),
         "high",
-        65.0,
+        61.7,
     ),
     (
         "everything maxed",
         FeatureSet(
-            context_switches_per_hour=24.0,
+            context_switches_per_hour=100.0,
             meeting_ratio=1.0,
-            notification_rate=60.0,
+            notification_rate=100.0,
             focus_ratio=0.0,
             multitasking_index=1.0,
         ),
@@ -117,7 +122,7 @@ PAIRWISE_CASES = [
         100.0,
     ),
     (
-        "switches saturating + notifications threshold + half focus/multitasking",
+        "high interruptions + half focus/multitasking, no meetings",
         FeatureSet(
             context_switches_per_hour=24.0,
             notification_rate=30.0,
@@ -125,7 +130,7 @@ PAIRWISE_CASES = [
             multitasking_index=0.5,
         ),
         "high",
-        65.0,
+        54.0,
     ),
     (
         "midpoint across all factors",
@@ -137,24 +142,24 @@ PAIRWISE_CASES = [
             multitasking_index=0.5,
         ),
         "high",
-        50.0,
+        55.0,
     ),
     (
-        "switches over-threshold saturates",
+        "switches beyond midpoint (sigmoid gives diminishing returns)",
         FeatureSet(context_switches_per_hour=24.0, focus_ratio=1.0),
-        "moderate",
-        30.0,
+        "low",
+        24.0,
     ),
     (
-        "notifications over-threshold saturates",
+        "notifications beyond midpoint (sigmoid gives diminishing returns)",
         FeatureSet(notification_rate=60.0, focus_ratio=1.0),
         "low",
-        20.0,
+        17.1,
     ),
 ]
 
-# All-Pairs parameter space: factor -> boundary levels (calm / mid / threshold /
-# saturating). The full cross-product is 4x3x4x3x3 = 432 combinations; the
+# All-Pairs parameter space: factor -> boundary levels (calm / mid / high /
+# extreme). The full cross-product is 4x3x4x3x3 = 432 combinations; the
 # All-Pairs covering array below exercises every factor *pair* in far fewer rows.
 SCORE_PARAMETER_SPACE: dict[str, list[float]] = {
     "context_switches_per_hour": [0.0, 6.0, 12.0, 24.0],
@@ -227,12 +232,12 @@ def _uncovered_pairs(parameter_space: dict[str, list[float]], rows: list[dict[st
 
 
 class TestNormalizeBranchCoverage(unittest.TestCase):
-    """Branch coverage of ``_normalize``: guard and clamp regions."""
+    """Branch coverage of ``_normalize``: guard and Hill function regions."""
 
-    def test_guard_and_clamp_regions(self) -> None:
-        for desc, value, maximum, expected in NORMALIZE_CASES:
+    def test_guard_and_hill_function(self) -> None:
+        for desc, value, midpoint, expected in NORMALIZE_CASES:
             with self.subTest(case=desc):
-                self.assertEqual(_normalize(value, maximum), expected)
+                self.assertAlmostEqual(_normalize(value, midpoint), expected, places=6)
 
 
 class TestLevelBranchCoverage(unittest.TestCase):
@@ -268,6 +273,29 @@ class TestContributions(unittest.TestCase):
         for name, factors, expected in cases:
             with self.subTest(case=name):
                 self.assertEqual(_contributions(factors)[name], expected)
+
+
+class TestInteractionBonus(unittest.TestCase):
+    """White-box checks of the interaction bonus."""
+
+    def test_zero_meetings_gives_zero_interaction(self) -> None:
+        self.assertEqual(
+            _interaction_bonus({"meeting_ratio": 0.0, "context_switches_per_hour": 0.8}), 0.0
+        )
+
+    def test_zero_interruptions_gives_zero_interaction(self) -> None:
+        self.assertEqual(
+            _interaction_bonus(
+                {"meeting_ratio": 1.0, "context_switches_per_hour": 0.0, "notification_rate": 0.0}
+            ),
+            0.0,
+        )
+
+    def test_both_elevated_gives_positive_interaction(self) -> None:
+        result = _interaction_bonus(
+            {"meeting_ratio": 0.5, "context_switches_per_hour": 0.8, "notification_rate": 0.3}
+        )
+        self.assertAlmostEqual(result, 0.5 * 0.8, places=6)
 
 
 class TestScorePairwise(unittest.TestCase):
@@ -386,6 +414,15 @@ class TestScoreContract(unittest.TestCase):
         )
         self.assertEqual(drivers.count(", "), 1)  # exactly two drivers, comma-separated
         self.assertEqual(report.explanation, drivers)
+
+    def test_interaction_amplifies_combined_stressors(self) -> None:
+        """Meeting + interruptions scores higher than the sum of their parts."""
+        cs_only = score(FeatureSet(context_switches_per_hour=12.0, focus_ratio=1.0))
+        mtg_only = score(FeatureSet(meeting_ratio=1.0, focus_ratio=1.0))
+        combined = score(
+            FeatureSet(context_switches_per_hour=12.0, meeting_ratio=1.0, focus_ratio=1.0)
+        )
+        self.assertGreater(combined.score, cs_only.score + mtg_only.score)
 
 
 if __name__ == "__main__":

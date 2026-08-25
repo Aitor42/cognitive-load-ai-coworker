@@ -13,6 +13,10 @@ from typing import Any, Iterable
 
 from .models import CONTEXT_SWITCH, FOCUS_BLOCK, MEETING, NOTIFICATION, Event, FeatureSet
 
+# Rapid-fire threshold: context switches closer than this are considered
+# frantic multitasking, even outside meetings.
+RAPID_SWITCH_SECONDS = 120.0
+
 
 def _to_epoch(value: Any) -> float:
     """Coerce an ISO-8601 string, numeric timestamp, or datetime to epoch seconds."""
@@ -99,12 +103,27 @@ def compute_features(events: Iterable[Event], window_minutes: float | None = Non
         elif e.kind == FOCUS_BLOCK:
             focus_minutes += e.duration_minutes
 
-    # Multitasking proxy: share of context switches that happen *during* a meeting.
+    # --- Multitasking proxy (two complementary signals) ---
+
+    # 1. Meeting-overlap: share of context switches during a meeting.
     multitask_switches = 0
     for t in switch_times:
         if any(start <= t <= end for start, end in meeting_intervals):
             multitask_switches += 1
-    multitasking_index = (multitask_switches / switches) if switches else 0.0
+    meeting_multitask = (multitask_switches / switches) if switches else 0.0
+
+    # 2. Rapid-fire: switches clustered within 2 minutes indicate frantic
+    #    context-switching even outside meetings.
+    sorted_times = sorted(switch_times)
+    rapid_pairs = sum(
+        1
+        for i in range(1, len(sorted_times))
+        if sorted_times[i] - sorted_times[i - 1] < RAPID_SWITCH_SECONDS
+    )
+    rapid_ratio = (rapid_pairs / max(switches - 1, 1)) if switches > 1 else 0.0
+
+    # Combined: whichever signal is stronger.
+    multitasking_index = max(meeting_multitask, rapid_ratio)
 
     return FeatureSet(
         context_switches_per_hour=switches / window_hours,

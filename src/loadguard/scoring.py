@@ -1,18 +1,20 @@
 """Explainable Cognitive Load Score.
 
-The score is a weighted, normalized combination of behavioral proxies. Each
-proxy is normalized to 0..1 against a transparent threshold, then combined with
-fixed, documented weights. This makes every recommendation traceable back to the
-underlying signals.
+The score is a weighted, normalized combination of behavioral proxies.  Each
+proxy is normalized to 0..1 via a smooth **sigmoid (Hill function)** that
+avoids the hard saturation of a linear clamp, then combined with fixed,
+documented weights plus an **interaction term** that captures compounding
+stressors (e.g. interruptions during dense meetings).  This makes every
+recommendation traceable back to the underlying signals.
 """
 
 from __future__ import annotations
 
 from .models import HIGH, LOW, MODERATE, OVERLOAD, FeatureSet, LoadReport
 
-# Weights (sum to 1.0). Chosen so that interruption frequency (context switches,
-# notifications) dominates, since it is the strongest behavioral proxy for
-# cognitive load.
+# Weights for individual factors (sum to 1.0).  Interruption frequency
+# (context switches, notifications) still dominates, since it is the
+# strongest behavioral proxy for cognitive load.
 WEIGHTS = {
     "context_switches_per_hour": 0.30,
     "meeting_ratio": 0.20,
@@ -21,18 +23,29 @@ WEIGHTS = {
     "multitasking_index": 0.15,
 }
 
-# Normalization thresholds: values at/above these map to a contribution of 1.0.
-MAX_CONTEXT_SWITCHES_PER_HOUR = 12.0
-MAX_NOTIFICATIONS_PER_HOUR = 30.0
+# Interaction weight: when meetings and interruptions overlap, the combined
+# cognitive cost is super-additive.  Applied on top of the base weighted sum.
+INTERACTION_WEIGHT = 0.10
+
+# Sigmoid midpoints (Hill function): the function returns 0.5 at the midpoint
+# and approaches 1.0 asymptotically, giving diminishing returns instead of
+# the hard saturation of a linear clamp.
+MIDPOINT_CONTEXT_SWITCHES = 6.0  # 6 switches/h -> 0.5 contribution
+MIDPOINT_NOTIFICATIONS = 10.0  # 10 notifs/h -> 0.5 contribution
 
 # Level boundaries for the 0..100 score.
 BOUNDARIES = ((25.0, LOW), (50.0, MODERATE), (75.0, HIGH), (float("inf"), OVERLOAD))
 
 
-def _normalize(value: float, maximum: float) -> float:
-    if maximum <= 0.0:
+def _normalize(value: float, midpoint: float) -> float:
+    """Smooth sigmoid normalization (Hill function).
+
+    Returns 0.5 at the midpoint and approaches 1.0 asymptotically, avoiding
+    the hard saturation of a linear clamp.
+    """
+    if midpoint <= 0.0 or value <= 0.0:
         return 0.0
-    return max(0.0, min(value / maximum, 1.0))
+    return value / (value + midpoint)
 
 
 def _level(score: float) -> str:
@@ -50,16 +63,33 @@ def _contributions(factors: dict[str, float]) -> dict[str, float]:
     """
     return {
         "context_switches_per_hour": _normalize(
-            factors.get("context_switches_per_hour", 0.0), MAX_CONTEXT_SWITCHES_PER_HOUR
+            factors.get("context_switches_per_hour", 0.0), MIDPOINT_CONTEXT_SWITCHES
         ),
         "meeting_ratio": max(0.0, min(factors.get("meeting_ratio", 0.0), 1.0)),
         "notification_rate": _normalize(
-            factors.get("notification_rate", 0.0), MAX_NOTIFICATIONS_PER_HOUR
+            factors.get("notification_rate", 0.0), MIDPOINT_NOTIFICATIONS
         ),
         # Focus time is protective: invert it so more focus lowers the score.
         "focus_ratio": max(0.0, min(1.0 - factors.get("focus_ratio", 0.0), 1.0)),
         "multitasking_index": max(0.0, min(factors.get("multitasking_index", 0.0), 1.0)),
     }
+
+
+def _interaction_bonus(contributions: dict[str, float]) -> float:
+    """Compounding penalty when meetings and interruptions overlap.
+
+    When meeting density is high AND interruption rate (context switches or
+    notifications) is also high, the cognitive cost is worse than the sum of
+    the parts.  The bonus is the product of meeting contribution and the
+    highest interruption contribution, so it is only significant when *both*
+    stressors are elevated simultaneously.
+    """
+    meeting = contributions.get("meeting_ratio", 0.0)
+    interruption = max(
+        contributions.get("context_switches_per_hour", 0.0),
+        contributions.get("notification_rate", 0.0),
+    )
+    return meeting * interruption
 
 
 def _explanation(factors: dict[str, float]) -> str:
@@ -87,7 +117,9 @@ def score(features: FeatureSet) -> LoadReport:
         "multitasking_index": round(features.multitasking_index, 2),
     }
     contributions = _contributions(factors)
-    total = sum(contributions[k] * WEIGHTS[k] for k in WEIGHTS)
+    base = sum(contributions[k] * WEIGHTS[k] for k in WEIGHTS)
+    interaction = _interaction_bonus(contributions) * INTERACTION_WEIGHT
+    total = min(base + interaction, 1.0)
     value = round(total * 100.0, 1)
     level = _level(value)
 

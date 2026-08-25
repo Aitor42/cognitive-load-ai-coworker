@@ -155,6 +155,34 @@ class TestComputeFeatures(unittest.TestCase):
         self.assertGreater(f_zero.context_switches_per_hour, 0)
         self.assertGreater(f_neg.context_switches_per_hour, 0)
 
+    def test_rapid_fire_switches_increase_multitasking(self) -> None:
+        """Switches within 2 minutes of each other signal frantic switching."""
+        events = [
+            Event(timestamp=0.0, kind=CONTEXT_SWITCH),
+            Event(timestamp=60.0, kind=CONTEXT_SWITCH),  # 60s -> rapid
+            Event(timestamp=100.0, kind=CONTEXT_SWITCH),  # 40s -> rapid
+            Event(timestamp=7200.0, kind=CONTEXT_SWITCH),  # 2h -> not rapid
+        ]
+        f = compute_features(events, window_minutes=120.0)
+        # 2 rapid pairs out of 3 gaps -> rapid_ratio = 2/3
+        # No meetings -> meeting_multitask = 0
+        # multitasking = max(0, 2/3) = 2/3
+        self.assertAlmostEqual(f.multitasking_index, 2 / 3, places=2)
+
+    def test_rapid_fire_dominates_over_meeting_overlap(self) -> None:
+        """When rapid-fire ratio exceeds meeting overlap, it determines the index."""
+        events = [
+            Event(timestamp=0.0, kind=MEETING, duration_minutes=1),  # ends at t=60
+            Event(timestamp=100.0, kind=CONTEXT_SWITCH),  # outside meeting
+            Event(timestamp=110.0, kind=CONTEXT_SWITCH),  # 10s -> rapid
+            Event(timestamp=120.0, kind=CONTEXT_SWITCH),  # 10s -> rapid
+        ]
+        f = compute_features(events, window_minutes=60.0)
+        # meeting_multitask: 0/3 (all outside meeting)
+        # rapid: 2/2 = 1.0
+        # multitasking = max(0, 1.0) = 1.0
+        self.assertAlmostEqual(f.multitasking_index, 1.0, places=2)
+
 
 if __name__ == "__main__":
     unittest.main()

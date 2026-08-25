@@ -33,7 +33,8 @@ import argparse
 import json
 import re
 import sys
-from datetime import datetime, timezone
+from calendar import monthrange
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -56,6 +57,13 @@ ABSENCE_SUMMARY_KEYWORDS = (
     "permiso",
 )
 VACATION_KEYWORDS = ("vacation", "vacaciones")
+
+# Safety cap for open-ended recurrence rules (no COUNT/UNTIL) so an unbounded
+# RRULE cannot loop forever when capturing signals.
+MAX_RRULE_OCCURRENCES = 366
+
+# RFC 5545 weekday codes -> Monday-based ``date.weekday()`` values.
+_WEEKDAY_CODES = {"MO": 0, "TU": 1, "WE": 2, "TH": 3, "FR": 4, "SA": 5, "SU": 6}
 
 
 def _parse_ics_datetime(value: str, tzid: str | None = None) -> float:
@@ -145,7 +153,12 @@ def _vevents(path: Path) -> list[tuple[dict[str, str], dict[str, str | None], bo
                 ),
                 None,
             )
-            props[name] = value.strip()
+            # Repeated properties (e.g. multiple EXDATE lines) are joined so
+            # no exclusion or value is lost.
+            if name in props:
+                props[name] += "," + value.strip()
+            else:
+                props[name] = value.strip()
             tzids[name] = tzid
         if "DTSTART" not in props:
             continue
@@ -187,6 +200,156 @@ def _absence_end(
     return start + 3600.0
 
 
+def _parse_rrule(value: str) -> dict[str, str]:
+    """Parse an RFC 5545 RRULE string into a {part: value} dict."""
+    return {
+        part.split("=", 1)[0]: part.split("=", 1)[1]
+        for part in value.split(";")
+        if "=" in part
+    }
+
+
+def _parse_ics_date_or_datetime(value: str, tzid: str | None = None) -> float:
+    """Parse an ICS DATE (YYYYMMDD) or DATE-TIME value (for UNTIL / EXDATE)."""
+    value = value.strip()
+    if len(value) == 8 and value.isdigit():
+        return _parse_ics_date(value)
+    return _parse_ics_datetime(value, tzid)
+
+
+def _expand_rrule(
+    start_epoch: float,
+    rrule: dict[str, str],
+    until_epoch: float | None = None,
+    exdates: set[float] | None = None,
+) -> list[float]:
+    """Expand an RRULE into occurrence start epochs (UTC), best-effort subset.
+
+    Supports ``FREQ`` of DAILY / WEEKLY / MONTHLY / YEARLY with ``INTERVAL``,
+    ``COUNT``, ``UNTIL`` (date or date-time), ``BYDAY`` for WEEKLY, and
+    ``EXDATE`` exclusion. Occurrences before ``DTSTART`` are skipped and
+    open-ended rules are capped at ``MAX_RRULE_OCCURRENCES``.
+    """
+    freq = rrule.get("FREQ", "").upper()
+    if freq not in ("DAILY", "WEEKLY", "MONTHLY", "YEARLY"):
+        return [start_epoch]
+    try:
+        interval = max(int(rrule.get("INTERVAL", "1")), 1)
+    except ValueError:
+        interval = 1
+    try:
+        count = int(rrule["COUNT"]) if "COUNT" in rrule else None
+    except ValueError:
+        count = None
+    byday = [d.upper() for d in rrule.get("BYDAY", "").split(",") if d]
+    if byday and not all(d in _WEEKDAY_CODES for d in byday):
+        byday = []
+    limit = count if count is not None else MAX_RRULE_OCCURRENCES
+
+    start_dt = datetime.fromtimestamp(start_epoch, tz=timezone.utc)
+    start_date = start_dt.date()
+
+    def ts(d: date) -> float:
+        return datetime(
+            d.year,
+            d.month,
+            d.day,
+            start_dt.hour,
+            start_dt.minute,
+            start_dt.second,
+            tzinfo=timezone.utc,
+        ).timestamp()
+
+    days: list[date] = []
+    if freq == "DAILY":
+        for i in range(limit):
+            d = start_date + timedelta(days=i * interval)
+            if until_epoch is not None and ts(d) > until_epoch:
+                break
+            days.append(d)
+    elif freq == "WEEKLY":
+        week_start = start_date - timedelta(days=start_date.weekday())
+        if byday:
+            offsets = sorted(_WEEKDAY_CODES[b] for b in byday)
+            week = 0
+            while len(days) < limit:
+                base = week_start + timedelta(weeks=week * interval)
+                for off in offsets:
+                    d = base + timedelta(days=off)
+                    if d < start_date:
+                        continue
+                    if until_epoch is not None and ts(d) > until_epoch:
+                        excluded = exdates or set()
+                        return [ts(day) for day in days if ts(day) not in excluded]
+                    days.append(d)
+                    if len(days) >= limit:
+                        break
+                week += 1
+        else:
+            for i in range(limit):
+                d = start_date + timedelta(weeks=i * interval)
+                if until_epoch is not None and ts(d) > until_epoch:
+                    break
+                days.append(d)
+    elif freq == "MONTHLY":
+        i = 0
+        while len(days) < limit:
+            month_index = start_date.year * 12 + (start_date.month - 1) + i * interval
+            year, month = divmod(month_index, 12)
+            month += 1
+            d = date(year, month, min(start_date.day, monthrange(year, month)[1]))
+            if until_epoch is not None and ts(d) > until_epoch:
+                break
+            days.append(d)
+            i += 1
+    else:  # YEARLY
+        for i in range(limit):
+            year = start_date.year + i * interval
+            day = start_date.day
+            if start_date.month == 2 and day == 29:
+                day = min(day, monthrange(year, 2)[1])
+            d = date(year, start_date.month, day)
+            if until_epoch is not None and ts(d) > until_epoch:
+                break
+            days.append(d)
+
+    excluded = exdates or set()
+    return [ts(d) for d in days if ts(d) not in excluded]
+
+
+def _event_occurrences(
+    props: dict[str, str],
+    tzids: dict[str, str | None],
+    all_day: bool,
+) -> list[tuple[float, float]]:
+    """Expand a VEVENT into (start, end) epoch pairs, applying RRULE / EXDATE."""
+    start = (
+        _parse_ics_date(props["DTSTART"])
+        if all_day
+        else _parse_ics_datetime(props["DTSTART"], tzids.get("DTSTART"))
+    )
+    end = _absence_end(props, start, all_day, tzids)
+    rrule = props.get("RRULE")
+    if not rrule:
+        return [(start, end)]
+    rule = _parse_rrule(rrule)
+    until = None
+    if "UNTIL" in rule:
+        until_value = rule["UNTIL"].strip()
+        if len(until_value) == 8 and until_value.isdigit():
+            # A DATE-only UNTIL bounds the whole day inclusively.
+            until = _parse_ics_date(until_value) + 86400.0 - 1.0
+        else:
+            until = _parse_ics_datetime(until_value, tzids.get("DTSTART"))
+    exdates = {
+        _parse_ics_date_or_datetime(v, tzids.get("EXDATE"))
+        for v in props.get("EXDATE", "").split(",")
+        if v
+    }
+    duration = end - start
+    return [(s, s + duration) for s in _expand_rrule(start, rule, until, exdates)]
+
+
 def parse_ics(path: Path) -> list[Event]:
     """Parse calendar VEVENTs into ``meeting`` events (minimal, dependency-free).
 
@@ -197,23 +360,15 @@ def parse_ics(path: Path) -> list[Event]:
     for props, tzids, all_day in _vevents(path):
         if all_day or _is_absence(props):
             continue
-        start = _parse_ics_datetime(props["DTSTART"], tzids.get("DTSTART"))
-        if "DTEND" in props:
-            duration = (
-                _parse_ics_datetime(props["DTEND"], tzids.get("DTEND")) - start
-            ) / 60.0
-        elif "DURATION" in props:
-            duration = _parse_duration(props["DURATION"])
-        else:
-            duration = 60.0
-        events.append(
-            Event(
-                timestamp=start,
-                kind="meeting",
-                duration_minutes=max(duration, 1.0),
-                meta={"title": props.get("SUMMARY", "")},
+        for start, end in _event_occurrences(props, tzids, all_day):
+            events.append(
+                Event(
+                    timestamp=start,
+                    kind="meeting",
+                    duration_minutes=max((end - start) / 60.0, 1.0),
+                    meta={"title": props.get("SUMMARY", "")},
+                )
             )
-        )
     return events
 
 
@@ -227,18 +382,9 @@ def parse_absences(path: Path) -> list[Absence]:
     for props, tzids, all_day in _vevents(path):
         if not _is_absence(props):
             continue
-        start = (
-            _parse_ics_date(props["DTSTART"])
-            if all_day
-            else _parse_ics_datetime(props["DTSTART"], tzids.get("DTSTART"))
-        )
-        absences.append(
-            Absence(
-                start=start,
-                end=_absence_end(props, start, all_day, tzids),
-                kind=_absence_kind(props),
-            )
-        )
+        kind = _absence_kind(props)
+        for start, end in _event_occurrences(props, tzids, all_day):
+            absences.append(Absence(start=start, end=end, kind=kind))
     return absences
 
 

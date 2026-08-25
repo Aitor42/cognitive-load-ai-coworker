@@ -243,6 +243,92 @@ class TestCapture(unittest.TestCase):
         finally:
             path.unlink()
 
+    def test_parse_ics_expands_daily_recurrence(self) -> None:
+        ics = (
+            "BEGIN:VCALENDAR\nVERSION:2.0\n"
+            "BEGIN:VEVENT\nUID:r1\nDTSTART:20260817T090000Z\nDTEND:20260817T100000Z\n"
+            "SUMMARY:Daily sync\nRRULE:FREQ=DAILY;COUNT=3\nEND:VEVENT\n"
+            "END:VCALENDAR\n"
+        )
+        path = self._write_ics(ics)
+        try:
+            events = capture_signals.parse_ics(path)
+            self.assertEqual(len(events), 3)
+            days = [datetime.fromtimestamp(e.timestamp, tz=timezone.utc).day for e in events]
+            self.assertEqual(days, [17, 18, 19])
+            self.assertTrue(all(e.duration_minutes == 60.0 for e in events))
+        finally:
+            path.unlink()
+
+    def test_expand_rrule_weekly_byday_skips_days_before_start(self) -> None:
+        start = datetime(2026, 8, 19, 9, 0, tzinfo=timezone.utc).timestamp()  # Wednesday
+        starts = capture_signals._expand_rrule(start, {"FREQ": "WEEKLY", "BYDAY": "MO,WE", "COUNT": "4"})
+        days = [datetime.fromtimestamp(ts, tz=timezone.utc).date().isoformat() for ts in starts]
+        # The Monday before the Wednesday start is skipped; then MO/WE recur.
+        self.assertEqual(days, ["2026-08-19", "2026-08-24", "2026-08-26", "2026-08-31"])
+
+    def test_expand_rrule_weekly_interval(self) -> None:
+        start = datetime(2026, 8, 17, 9, 0, tzinfo=timezone.utc).timestamp()  # Monday
+        starts = capture_signals._expand_rrule(start, {"FREQ": "WEEKLY", "INTERVAL": "2", "COUNT": "3"})
+        days = [datetime.fromtimestamp(ts, tz=timezone.utc).date().isoformat() for ts in starts]
+        self.assertEqual(days, ["2026-08-17", "2026-08-31", "2026-09-14"])
+
+    def test_event_occurrences_until_date_is_inclusive(self) -> None:
+        props = {
+            "DTSTART": "20260817T090000Z",
+            "DTEND": "20260817T100000Z",
+            "RRULE": "FREQ=DAILY;UNTIL=20260820",
+        }
+        occurrences = capture_signals._event_occurrences(props, {}, False)
+        self.assertEqual(len(occurrences), 4)  # 17, 18, 19, 20 Aug inclusive
+
+    def test_event_occurrences_exdate_excludes_instances(self) -> None:
+        props = {
+            "DTSTART": "20260817T090000Z",
+            "DTEND": "20260817T100000Z",
+            "RRULE": "FREQ=DAILY;COUNT=3",
+            "EXDATE": "20260818T090000Z",
+        }
+        occurrences = capture_signals._event_occurrences(props, {}, False)
+        self.assertEqual(len(occurrences), 2)
+
+    def test_expand_rrule_open_ended_is_capped(self) -> None:
+        start = datetime(2026, 8, 17, 9, 0, tzinfo=timezone.utc).timestamp()
+        starts = capture_signals._expand_rrule(start, {"FREQ": "DAILY"})
+        self.assertEqual(len(starts), capture_signals.MAX_RRULE_OCCURRENCES)
+
+    def test_expand_rrule_monthly_clamps_short_months(self) -> None:
+        start = datetime(2026, 1, 31, 9, 0, tzinfo=timezone.utc).timestamp()
+        starts = capture_signals._expand_rrule(start, {"FREQ": "MONTHLY", "COUNT": "3"})
+        days = [datetime.fromtimestamp(ts, tz=timezone.utc).date().isoformat() for ts in starts]
+        self.assertEqual(days, ["2026-01-31", "2026-02-28", "2026-03-31"])
+
+    def test_expand_rrule_yearly_clamps_leap_day(self) -> None:
+        start = datetime(2024, 2, 29, 9, 0, tzinfo=timezone.utc).timestamp()
+        starts = capture_signals._expand_rrule(start, {"FREQ": "YEARLY", "COUNT": "2"})
+        days = [datetime.fromtimestamp(ts, tz=timezone.utc).date().isoformat() for ts in starts]
+        self.assertEqual(days, ["2024-02-29", "2025-02-28"])
+
+    def test_expand_rrule_unknown_freq_returns_start_only(self) -> None:
+        start = 1_700_000_000.0
+        starts = capture_signals._expand_rrule(start, {"FREQ": "HOURLY", "COUNT": "5"})
+        self.assertEqual(starts, [start])
+
+    def test_parse_absences_expands_recurrence(self) -> None:
+        ics = (
+            "BEGIN:VCALENDAR\nVERSION:2.0\n"
+            "BEGIN:VEVENT\nUID:a1\nDTSTART;VALUE=DATE:20260817\nDTEND;VALUE=DATE:20260818\n"
+            "SUMMARY:Out of office\nRRULE:FREQ=WEEKLY;COUNT=2\nEND:VEVENT\n"
+            "END:VCALENDAR\n"
+        )
+        path = self._write_ics(ics)
+        try:
+            absences = capture_signals.parse_absences(path)
+            self.assertEqual(len(absences), 2)
+            self.assertEqual(absences[1].start - absences[0].start, 7 * 86400.0)
+        finally:
+            path.unlink()
+
     def test_is_absence_by_busy_status_and_summary(self) -> None:
         self.assertTrue(capture_signals._is_absence({"X-MICROSOFT-CDO-BUSYSTATUS": "OOF"}))
         self.assertTrue(capture_signals._is_absence({"SUMMARY": "Out of office"}))

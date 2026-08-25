@@ -19,8 +19,9 @@ import json
 import math
 import time
 import uuid
+import warnings
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .models import MEETING, Event, Plan, Task
@@ -64,6 +65,25 @@ def _ics_escape(text: str) -> str:
     )
 
 
+def _ics_fold(text: str) -> str:
+    """Fold a content line longer than 75 octets per RFC 5545 (CRLF + space)."""
+    if len(text) <= 75:
+        return text
+    lines = [text[:75]]
+    rest = text[75:]
+    while rest:
+        lines.append(" " + rest[:74])
+        rest = rest[74:]
+    return "\r\n".join(lines)
+
+
+def _day_end_epoch(epoch: float) -> float:
+    """Start of the next UTC day after ``epoch`` (exclusive day bound)."""
+    dt = datetime.fromtimestamp(epoch, tz=timezone.utc)
+    next_day = datetime(dt.year, dt.month, dt.day, tzinfo=timezone.utc) + timedelta(days=1)
+    return next_day.timestamp()
+
+
 def _find_next_free_slot(
     cursor: float, duration_seconds: float, busy_intervals: list[tuple[float, float]]
 ) -> float:
@@ -83,6 +103,7 @@ def export_ics(
     start_epoch: float | None = None,
     existing_events: list[Event] | None = None,
     busy_intervals: list[tuple[float, float]] | None = None,
+    horizon_epoch: float | None = None,
 ) -> str:
     """Render the plan's focus/recovery blocks as an iCalendar (.ics) string.
 
@@ -93,10 +114,17 @@ def export_ics(
     When *existing_events* or *busy_intervals* are provided, collision detection
     skips over existing meetings and scheduled commitments, placing blocks only
     in genuine free gaps.
+
+    Blocks that would start at or after *horizon_epoch* (by default the end of
+    the UTC day containing *start_epoch*) are not exported, so a plan cannot
+    spill its protected blocks into the middle of the night.
     """
     if start_epoch is None:
         start_epoch = float(math.ceil(time.time() / 900.0) * 900)
+    if horizon_epoch is None:
+        horizon_epoch = _day_end_epoch(start_epoch)
     cursor = start_epoch
+    dtstamp = _ics_datetime(time.time())
 
     all_busy: list[tuple[float, float]] = list(busy_intervals or [])
     if existing_events:
@@ -113,6 +141,8 @@ def export_ics(
         "CALSCALE:GREGORIAN",
     ]
     for item in plan.items:
+        if cursor >= horizon_epoch:
+            break
         if item.action in BLOCK_DURATIONS:
             duration = BLOCK_DURATIONS[item.action]
             dur_seconds = duration * 60.0
@@ -121,35 +151,38 @@ def export_ics(
             lines += [
                 "BEGIN:VEVENT",
                 f"UID:loadguard-{plan.plan_id or 'plan'}-{item.position}@loadguard",
-                f"DTSTAMP:{_ics_datetime(cursor)}",
+                f"DTSTAMP:{dtstamp}",
                 f"DTSTART:{_ics_datetime(cursor)}",
                 f"DTEND:{_ics_datetime(cursor + dur_seconds)}",
-                f"SUMMARY:{_ics_escape(item.title)}",
+                _ics_fold(f"SUMMARY:{_ics_escape(item.title)}"),
             ]
             if item.rationale:
-                lines.append(f"DESCRIPTION:{_ics_escape(item.rationale)}")
+                lines.append(_ics_fold(f"DESCRIPTION:{_ics_escape(item.rationale)}"))
             lines.append("END:VEVENT")
             cursor += dur_seconds
-        elif item.action == "do" and item.task_id:
-            duration = task_durations.get(item.task_id, 30.0)
-            dur_seconds = duration * 60.0
-            if all_busy:
-                cursor = _find_next_free_slot(cursor, dur_seconds, all_busy)
-            lines += [
-                "BEGIN:VEVENT",
-                f"UID:loadguard-{plan.plan_id or 'plan'}-{item.position}@loadguard",
-                f"DTSTAMP:{_ics_datetime(cursor)}",
-                f"DTSTART:{_ics_datetime(cursor)}",
-                f"DTEND:{_ics_datetime(cursor + dur_seconds)}",
-                f"SUMMARY:{_ics_escape(item.title)}",
-                "CATEGORIES:LOADGUARD-TASK",
-            ]
-            if item.rationale:
-                lines.append(f"DESCRIPTION:{_ics_escape(item.rationale)}")
-            lines.append("END:VEVENT")
-            cursor += dur_seconds
+        elif item.action == "do":
+            if item.task_id:
+                duration = task_durations.get(item.task_id, 30.0)
+                dur_seconds = duration * 60.0
+                if all_busy:
+                    cursor = _find_next_free_slot(cursor, dur_seconds, all_busy)
+                lines += [
+                    "BEGIN:VEVENT",
+                    f"UID:loadguard-{plan.plan_id or 'plan'}-{item.position}@loadguard",
+                    f"DTSTAMP:{dtstamp}",
+                    f"DTSTART:{_ics_datetime(cursor)}",
+                    f"DTEND:{_ics_datetime(cursor + dur_seconds)}",
+                    _ics_fold(f"SUMMARY:{_ics_escape(item.title)}"),
+                    "CATEGORIES:LOADGUARD-TASK",
+                ]
+                if item.rationale:
+                    lines.append(_ics_fold(f"DESCRIPTION:{_ics_escape(item.rationale)}"))
+                lines.append("END:VEVENT")
+                cursor += dur_seconds
         elif item.action in ("delegate", "batch"):
             cursor += MINOR_STEP_MINUTES * 60.0
+        else:
+            warnings.warn(f"unknown plan action {item.action!r}; skipped in calendar export")
     lines.append("END:VCALENDAR")
     return "\r\n".join(lines) + "\r\n"
 

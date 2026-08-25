@@ -81,9 +81,82 @@ class TestExportIcs(unittest.TestCase):
         self.assertIn("DTSTART:20231114T221820Z", ics)  # 22:13:20 + 5 min (batch)
 
     def test_default_start_epoch_is_rounded(self):
-        ics = export_ics(_plan(), _tasks())
+        from unittest import mock
+
+        with mock.patch("loadguard.actions.time.time", return_value=1_700_000_000.0):
+            ics = export_ics(_plan(), _tasks())
         self.assertIn("BEGIN:VCALENDAR", ics)
         self.assertIn("BEGIN:VEVENT", ics)
+
+    def test_dtstamp_is_creation_time(self):
+        """DTSTAMP must be the render time, not the block start."""
+        from unittest import mock
+
+        with mock.patch("loadguard.actions.time.time", return_value=1_700_000_000.0):
+            ics = export_ics(_plan(), _tasks(), start_epoch=1_700_000_000.0)
+        self.assertIn("DTSTAMP:20231114T221320Z", ics)
+
+    def test_ics_fold_long_lines(self):
+        """SUMMARY/DESCRIPTION longer than 75 octets are folded per RFC 5545."""
+        plan = Plan(
+            load_report=LoadReport(score=80.0, level="overload"),
+            plan_id="x",
+            items=[
+                PlanItem(
+                    position=1,
+                    action="focus_block",
+                    title="F" * 100,
+                    rationale="R" * 120,
+                )
+            ],
+        )
+        ics = export_ics(plan, _tasks(), start_epoch=1_700_000_000.0)
+        self.assertIn("\r\n ", ics)
+        self.assertTrue(all(len(line) <= 75 for line in ics.split("\r\n") if line))
+
+    def test_export_ics_stops_at_end_of_day(self):
+        """Blocks starting after the UTC day boundary are not exported."""
+        plan = Plan(
+            load_report=LoadReport(score=80.0, level="overload"),
+            plan_id="x",
+            items=[
+                PlanItem(position=i, action="focus_block", title=f"Focus {i}")
+                for i in range(1, 5)
+            ],
+        )
+        # Start 22:13:20Z: blocks at 22:13, 22:58, 23:43 (all before midnight)
+        # and a fourth at 00:28 next day, which must not be exported.
+        ics = export_ics(plan, _tasks(), start_epoch=1_700_000_000.0)
+        self.assertEqual(ics.count("BEGIN:VEVENT"), 3)
+        self.assertNotIn("Focus 4", ics)
+
+    def test_export_ics_horizon_override(self):
+        plan = Plan(
+            load_report=LoadReport(score=80.0, level="overload"),
+            plan_id="x",
+            items=[
+                PlanItem(position=i, action="focus_block", title=f"Focus {i}")
+                for i in range(1, 5)
+            ],
+        )
+        ics = export_ics(
+            plan,
+            _tasks(),
+            start_epoch=1_700_000_000.0,
+            horizon_epoch=1_700_000_000.0 + 4 * 3600.0,
+        )
+        self.assertEqual(ics.count("BEGIN:VEVENT"), 4)
+
+    def test_unknown_action_warns(self):
+        """An action outside the known vocabulary warns instead of failing silently."""
+        plan = Plan(
+            load_report=LoadReport(score=80.0, level="overload"),
+            plan_id="x",
+            items=[PlanItem(position=1, action="focus", title="Focus block")],
+        )
+        with self.assertWarns(UserWarning):
+            ics = export_ics(plan, _tasks(), start_epoch=1_700_000_000.0)
+        self.assertEqual(ics.count("BEGIN:VEVENT"), 0)
 
     def test_do_item_without_task_is_skipped(self):
         plan = Plan(

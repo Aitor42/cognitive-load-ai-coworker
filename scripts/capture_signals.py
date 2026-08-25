@@ -35,6 +35,7 @@ import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -57,19 +58,35 @@ ABSENCE_SUMMARY_KEYWORDS = (
 VACATION_KEYWORDS = ("vacation", "vacaciones")
 
 
-def _parse_ics_datetime(value: str) -> float:
+def _parse_ics_datetime(value: str, tzid: str | None = None) -> float:
+    """Parse an ICS DATE-TIME value to epoch seconds (UTC).
+
+    Handles the ``Z`` suffix, explicit numeric offsets (e.g. ``+0200``) and a
+    ``TZID`` (IANA name, e.g. ``Europe/Madrid``) via the stdlib ``zoneinfo``.
+    A ``TZID`` that cannot be resolved (e.g. a Windows timezone name) falls
+    back to treating the wall time as UTC rather than crashing the parse.
+    """
     value = value.strip()
     if value.endswith("Z"):
         dt = datetime.strptime(value[:-1], "%Y%m%dT%H%M%S").replace(tzinfo=timezone.utc)
-    else:
-        dt = datetime.strptime(value, "%Y%m%dT%H%M%S").replace(tzinfo=timezone.utc)
-    return dt.timestamp()
+        return dt.timestamp()
+    try:
+        # Explicit numeric offset, e.g. 20260817T090000+0200.
+        return datetime.strptime(value, "%Y%m%dT%H%M%S%z").timestamp()
+    except ValueError:
+        pass
+    dt = datetime.strptime(value, "%Y%m%dT%H%M%S")
+    if tzid:
+        try:
+            return dt.replace(tzinfo=ZoneInfo(tzid)).timestamp()
+        except (ZoneInfoNotFoundError, ValueError, OSError):
+            pass
+    return dt.replace(tzinfo=timezone.utc).timestamp()
 
 
 def _parse_ics_date(value: str) -> float:
     """Parse an all-day ICS DATE value (YYYYMMDD) to epoch seconds (UTC midnight)."""
-    value = value.strip()
-    dt = datetime.strptime(value[:8], "%Y%m%d").replace(tzinfo=timezone.utc)
+    dt = datetime.strptime(value.strip(), "%Y%m%d").replace(tzinfo=timezone.utc)
     return dt.timestamp()
 
 
@@ -104,12 +121,13 @@ def _unfold(text: str) -> str:
     return "\n".join(unfolded)
 
 
-def _vevents(path: Path) -> list[tuple[dict[str, str], bool]]:
-    """Return each VEVENT's properties plus an all-day flag (minimal parser)."""
+def _vevents(path: Path) -> list[tuple[dict[str, str], dict[str, str | None], bool]]:
+    """Return each VEVENT's properties, per-property TZID, and all-day flag."""
     text = _unfold(path.read_text(encoding="utf-8"))
-    out: list[tuple[dict[str, str], bool]] = []
+    out: list[tuple[dict[str, str], dict[str, str | None], bool]] = []
     for block in re.findall(r"BEGIN:VEVENT(.*?)END:VEVENT", text, re.S):
         props: dict[str, str] = {}
+        tzids: dict[str, str | None] = {}
         all_day = False
         for line in block.splitlines():
             line = line.strip()
@@ -118,10 +136,20 @@ def _vevents(path: Path) -> list[tuple[dict[str, str], bool]]:
             name_part, _, value = line.partition(":")
             if "VALUE=DATE" in name_part.upper():
                 all_day = True
-            props[name_part.split(";")[0].upper()] = value.strip()
+            name = name_part.split(";")[0].upper()
+            tzid = next(
+                (
+                    p.split("=", 1)[1]
+                    for p in name_part.split(";")[1:]
+                    if p.upper().startswith("TZID=")
+                ),
+                None,
+            )
+            props[name] = value.strip()
+            tzids[name] = tzid
         if "DTSTART" not in props:
             continue
-        out.append((props, all_day))
+        out.append((props, tzids, all_day))
     return out
 
 
@@ -140,12 +168,18 @@ def _absence_kind(props: dict[str, str]) -> str:
     return LEAVE
 
 
-def _absence_end(props: dict[str, str], start: float, all_day: bool) -> float:
-    """Resolve an absence's end time, treating all-day DTEND as exclusive."""
+def _absence_end(
+    props: dict[str, str],
+    start: float,
+    all_day: bool,
+    tzids: dict[str, str | None] | None = None,
+) -> float:
+    """Resolve an event's end time, treating all-day DTEND as exclusive."""
+    tzids = tzids or {}
     if "DTEND" in props:
         if all_day:
             return _parse_ics_date(props["DTEND"]) - 1.0
-        return _parse_ics_datetime(props["DTEND"])
+        return _parse_ics_datetime(props["DTEND"], tzids.get("DTEND"))
     if "DURATION" in props:
         return start + _parse_duration(props["DURATION"]) * 60.0
     if all_day:
@@ -160,12 +194,14 @@ def parse_ics(path: Path) -> list[Event]:
     absences are handled by ``parse_absences``.
     """
     events: list[Event] = []
-    for props, all_day in _vevents(path):
+    for props, tzids, all_day in _vevents(path):
         if all_day or _is_absence(props):
             continue
-        start = _parse_ics_datetime(props["DTSTART"])
+        start = _parse_ics_datetime(props["DTSTART"], tzids.get("DTSTART"))
         if "DTEND" in props:
-            duration = (_parse_ics_datetime(props["DTEND"]) - start) / 60.0
+            duration = (
+                _parse_ics_datetime(props["DTEND"], tzids.get("DTEND")) - start
+            ) / 60.0
         elif "DURATION" in props:
             duration = _parse_duration(props["DURATION"])
         else:
@@ -188,14 +224,20 @@ def parse_absences(path: Path) -> list[Absence]:
     summary text, which could contain a medical or personal reason.
     """
     absences: list[Absence] = []
-    for props, all_day in _vevents(path):
+    for props, tzids, all_day in _vevents(path):
         if not _is_absence(props):
             continue
         start = (
-            _parse_ics_date(props["DTSTART"]) if all_day else _parse_ics_datetime(props["DTSTART"])
+            _parse_ics_date(props["DTSTART"])
+            if all_day
+            else _parse_ics_datetime(props["DTSTART"], tzids.get("DTSTART"))
         )
         absences.append(
-            Absence(start=start, end=_absence_end(props, start, all_day), kind=_absence_kind(props))
+            Absence(
+                start=start,
+                end=_absence_end(props, start, all_day, tzids),
+                kind=_absence_kind(props),
+            )
         )
     return absences
 

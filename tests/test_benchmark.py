@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -193,6 +194,54 @@ class TestCapture(unittest.TestCase):
     def test_parse_ics_date(self) -> None:
         ts = capture_signals._parse_ics_date("20260817")
         self.assertEqual(ts, capture_signals._parse_ics_datetime("20260817T000000Z"))
+
+    def test_parse_ics_date_rejects_invalid(self) -> None:
+        # Extra characters are no longer silently sliced away.
+        with self.assertRaises(ValueError):
+            capture_signals._parse_ics_date("20260817extra")
+
+    def test_parse_ics_datetime_with_tzid(self) -> None:
+        from zoneinfo import ZoneInfo
+
+        expected = datetime(2026, 8, 17, 9, 0, tzinfo=ZoneInfo("Europe/Madrid")).timestamp()
+        self.assertEqual(capture_signals._parse_ics_datetime("20260817T090000", "Europe/Madrid"), expected)
+
+    def test_parse_ics_datetime_with_numeric_offset(self) -> None:
+        self.assertEqual(
+            capture_signals._parse_ics_datetime("20260817T090000+0200"),
+            datetime(2026, 8, 17, 7, 0, tzinfo=timezone.utc).timestamp(),
+        )
+
+    def test_parse_ics_datetime_unknown_tzid_falls_back_to_utc(self) -> None:
+        self.assertEqual(
+            capture_signals._parse_ics_datetime("20260817T090000", "W. Europe Standard Time"),
+            datetime(2026, 8, 17, 9, 0, tzinfo=timezone.utc).timestamp(),
+        )
+
+    def test_parse_ics_datetime_malformed_raises(self) -> None:
+        with self.assertRaises(ValueError):
+            capture_signals._parse_ics_datetime("2026-08-17")
+
+    def test_parse_ics_respects_tzid(self) -> None:
+        from zoneinfo import ZoneInfo
+
+        ics = (
+            "BEGIN:VCALENDAR\nVERSION:2.0\n"
+            "BEGIN:VEVENT\nUID:t1\nDTSTART;TZID=Europe/Madrid:20260817T090000\n"
+            "DTEND;TZID=Europe/Madrid:20260817T100000\nSUMMARY:Standup\nEND:VEVENT\n"
+            "END:VCALENDAR\n"
+        )
+        path = self._write_ics(ics)
+        try:
+            events = capture_signals.parse_ics(path)
+            self.assertEqual(len(events), 1)
+            self.assertEqual(
+                events[0].timestamp,
+                datetime(2026, 8, 17, 9, 0, tzinfo=ZoneInfo("Europe/Madrid")).timestamp(),
+            )
+            self.assertEqual(events[0].duration_minutes, 60.0)
+        finally:
+            path.unlink()
 
     def test_is_absence_by_busy_status_and_summary(self) -> None:
         self.assertTrue(capture_signals._is_absence({"X-MICROSOFT-CDO-BUSYSTATUS": "OOF"}))

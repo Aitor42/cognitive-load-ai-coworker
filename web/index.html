@@ -83,7 +83,7 @@ details.section[open] summary{margin-bottom:12px}
 <body>
 <div class="wrap">
 <h1>🧠 LoadGuard — Live Dashboard</h1>
-<div class="sub">Cognitive-Load-Aware AI Co-Worker · IBM AI Builders Challenge 2026</div>
+<div class="sub">The AI co-worker whose job is to protect you from the other AI co-workers · IBM AI Builders Challenge 2026</div>
 
 <div class="toolbar">
   <select id="scenario">
@@ -171,6 +171,8 @@ function modelChipsHtml(r){
     <span class="chip">Narrator: ${esc(narrator)}</span>
     <span class="chip ${esc(r.plan.status)}">Status: ${esc(r.plan.status)}</span>`;
 }
+
+function taskTitle(id){const t=(TASKS||[]).find(t=>t.id===id);return t?(t.title||id):id;}
 
 function itemRowsHtml(items){
   return items.map(i=>`<li>
@@ -270,8 +272,14 @@ function render(r){
   };
 
   const trendHtml=r.trend?`<div class="trend">${esc(r.trend.summary)}</div>`:"";
+  const assumptionsHtml=imp&&imp.assumptions
+    ? `<div class="meta" style="margin-top:8px"><b>Assumptions behind the ↓ ${imp.delta} pts projection</b>
+        <ul style="margin-top:4px">${Object.entries(imp.assumptions).map(([k,v])=>`<li style="border:0;padding:2px 0"><b>${esc(k)}</b>: ${esc(v)}</li>`).join("")}</ul>
+        <div style="color:#6b7280">Projected, not measured — observed impact is only reported when real outcome signals are recorded (see the pilot evaluation).</div></div>`
+    : "";
   const whyHtml=`<div class="note">${esc(r.plan.note)}</div>`+
-    `<div class="meta" style="margin-top:8px">Top contributor: <b>${esc(LABELS[top])}</b> · ${esc(lr.explanation)}</div>`;
+    `<div class="meta" style="margin-top:8px">Top contributor: <b>${esc(LABELS[top])}</b> · ${esc(lr.explanation)}</div>`+
+    assumptionsHtml;
 
   const itemRows=r.plan.items.map((i,idx)=>`<li>
       <input type="checkbox" class="editcb hidden" data-idx="${idx}" checked>
@@ -288,7 +296,42 @@ function render(r){
     <b>${imp.after_score.toFixed(0)}</b> after plan (↓ ${imp.delta} pts) ·
     ${r.plan.items.length} actions · ${alerts.length} pending reassignment(s)</div>${aiChip}`;
 
+  // The six-step loop, reflecting the actual state of this run.
+  const proposed=MODEL_LABEL[r.plan.proposed_by]||r.plan.proposed_by||"deterministic";
+  const guardName=r.guardian?.engine||"deterministic";
+  const guardOk=r.guardian?(r.guardian.passed?" ✓ passed":" ✗ blocked"):"";
+  const loop=`<div class="card" style="margin-top:20px">
+      <h2>🧠 How LoadGuard protects your attention</h2>
+      <div class="note" style="margin-bottom:12px">Every AI assistant adds notifications, context switches, and micro-decisions.
+        LoadGuard is the co-worker whose job is to <b>protect your attention budget</b>: it senses when interruptions pile up,
+        explains why, proposes a calmer day — and only acts with your approval.</div>
+      <div class="grid" style="margin-top:0">
+        <div><div class="meta">1 · Sense</div><div class="summaryline" style="margin:0">${EVENTS.length} signal(s) read</div></div>
+        <div><div class="meta">2 · Diagnose</div><div class="summaryline" style="margin:0">Load <b>${esc(lr.level)}</b> · ${lr.score.toFixed(0)}/100</div></div>
+        <div><div class="meta">3 · Propose</div><div class="summaryline" style="margin:0">${esc(proposed)}</div></div>
+        <div><div class="meta">4 · Validate</div><div class="summaryline" style="margin:0">${esc(guardName)}${guardOk}</div></div>
+        <div><div class="meta">5 · You decide</div><div class="summaryline" style="margin:0">${esc(r.plan.status)}</div></div>
+        <div><div class="meta">6 · Act &amp; measure</div><div class="summaryline" style="margin:0">↓ ${imp.delta} pts projected</div></div>
+      </div>
+    </div>`;
+
+  // What Granite proposed before the deterministic gate (only when an LLM is
+  // configured and its proposal passed validation).
+  const prop=r.proposal;
+  const proposalHtml=(prop&&(prop.priority_task_id||(prop.delegate_task_ids&&prop.delegate_task_ids.length)||(prop.inserts&&prop.inserts.length)||prop.rationale))
+    ? `<details class="section"><summary>🤖 What Granite proposed (before the gate)</summary>
+        <div class="meta">${esc(prop.rationale||"")}</div>
+        <ul style="margin-top:8px">
+          ${prop.priority_task_id?`<li><span class="badge do">prioritize</span><div class="itembody"><b>${esc(taskTitle(prop.priority_task_id))}</b></div></li>`:""}
+          ${(prop.delegate_task_ids||[]).map(id=>`<li><span class="badge delegate">delegate</span><div class="itembody"><b>${esc(taskTitle(id))}</b></div></li>`).join("")}
+          ${(prop.inserts||[]).map(ins=>`<li><span class="badge ${esc(ins.action)}">${esc(ins.action)}</span><div class="itembody"><b>after ${esc(ins.after_task_id?taskTitle(ins.after_task_id):"the day")}</b></div></li>`).join("")}
+        </ul>
+        <div class="meta">Validated by the deterministic gate before it reached your plan.</div>
+      </details>`
+    : "";
+
   document.getElementById("out").innerHTML=`
+    ${loop}
     <div class="card" style="margin-top:20px">
       <h2>At a glance</h2>${summary}
       <div class="grid" style="margin-top:16px">
@@ -328,6 +371,7 @@ function render(r){
 
     <details class="section"><summary>🕒 Signal timeline</summary>${timelineHtml(EVENTS)}</details>
     <details class="section"><summary>📊 Signals (proxies)</summary><table>${factorRows}</table></details>
+    ${proposalHtml}
     <details class="section"><summary>💡 Why am I seeing this recommendation?</summary>${whyHtml}</details>
     <details class="section"><summary>🔒 Privacy</summary>
       <div class="privacy" id="privacyBox">loading…</div>

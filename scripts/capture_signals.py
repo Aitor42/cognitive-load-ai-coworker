@@ -511,29 +511,42 @@ def _event_occurrences(
     return [(s, s + duration) for s in _expand_rrule(start, rule, until, exdates)]
 
 
-def parse_ics(path: Path) -> list[Event]:
-    """Parse calendar VEVENTs into ``meeting`` events (minimal, dependency-free).
+def parse_calendar(path: Path) -> tuple[list[Event], list[Absence]]:
+    """Parse an ICS file once, returning ``(meeting events, absences)``.
 
-    All-day and absence (out-of-office / vacation) events are skipped here;
-    absences are handled by ``parse_absences``.
+    The file is read a single time and each VEVENT is classified once:
+    absence (out-of-office / vacation) events become ``Absence`` records
+    (all-day or not), everything else becomes a ``meeting`` event, and
+    all-day non-absence events are skipped entirely.
     """
     events: list[Event] = []
+    absences: list[Absence] = []
     for props, tzids, all_day in _vevents(path):
         try:
-            if all_day or _is_absence(props, all_day):
-                continue
-            for start, end in _event_occurrences(props, tzids, all_day):
-                events.append(
+            if _is_absence(props, all_day):
+                absences.extend(
+                    Absence(start=start, end=end, kind=_absence_kind(props))
+                    for start, end in _event_occurrences(props, tzids, all_day)
+                )
+            elif not all_day:
+                events.extend(
                     Event(
                         timestamp=start,
                         kind="meeting",
                         duration_minutes=max((end - start) / 60.0, 1.0),
                         meta={"title": props.get("SUMMARY", "")},
                     )
+                    for start, end in _event_occurrences(props, tzids, all_day)
                 )
         except (ValueError, TypeError) as exc:
             # One malformed VEVENT must not abort the whole calendar.
             print(f"warning: skipping malformed calendar event: {exc}", file=sys.stderr)
+    return events, absences
+
+
+def parse_ics(path: Path) -> list[Event]:
+    """Parse calendar VEVENTs into ``meeting`` events (minimal, dependency-free)."""
+    events, _ = parse_calendar(path)
     return events
 
 
@@ -543,17 +556,7 @@ def parse_absences(path: Path) -> list[Absence]:
     Only the fact and type of the absence are captured — never the event's
     summary text, which could contain a medical or personal reason.
     """
-    absences: list[Absence] = []
-    for props, tzids, all_day in _vevents(path):
-        try:
-            if not _is_absence(props, all_day):
-                continue
-            kind = _absence_kind(props)
-            for start, end in _event_occurrences(props, tzids, all_day):
-                absences.append(Absence(start=start, end=end, kind=kind))
-        except (ValueError, TypeError) as exc:
-            # One malformed VEVENT must not abort the whole calendar.
-            print(f"warning: skipping malformed absence event: {exc}", file=sys.stderr)
+    _, absences = parse_calendar(path)
     return absences
 
 
@@ -711,14 +714,15 @@ def main() -> None:
     args = ap.parse_args()
 
     events: list[Event] = []
+    absences: list[Absence] = []
     if args.calendar:
-        events += parse_ics(args.calendar)
+        # Single read of the ICS file: meetings and absences together.
+        meetings, absences = parse_calendar(args.calendar)
+        events += meetings
     if args.notifications:
         events += parse_notifications(args.notifications)
     if args.focus:
         events += parse_focus(args.focus)
-
-    absences: list[Absence] = parse_absences(args.calendar) if args.calendar else []
 
     if not events and args.absences_out is None and args.workers_out is None:
         ap.error("provide at least one of --calendar, --notifications, --focus")

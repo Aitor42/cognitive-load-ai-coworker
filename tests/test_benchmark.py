@@ -141,6 +141,56 @@ class TestCapture(unittest.TestCase):
         # DTSTART + DURATION:PT45M -> 45 minutes
         self.assertEqual(events[2].duration_minutes, 45.0)
 
+    def test_parse_calendar_matches_individual_parsers(self) -> None:
+        """parse_calendar returns the same split as parse_ics + parse_absences."""
+        ics = (
+            "BEGIN:VCALENDAR\nVERSION:2.0\n"
+            "BEGIN:VEVENT\nUID:m1\nDTSTART:20260817T090000Z\nDTEND:20260817T100000Z\n"
+            "SUMMARY:Standup\nEND:VEVENT\n"
+            "BEGIN:VEVENT\nUID:a1\nDTSTART;VALUE=DATE:20260817\nDTEND;VALUE=DATE:20260818\n"
+            "SUMMARY:Out of office\nEND:VEVENT\n"
+            "END:VCALENDAR\n"
+        )
+        path = self._write_ics(ics)
+        try:
+            events, absences = capture_signals.parse_calendar(path)
+            self.assertEqual(events, capture_signals.parse_ics(path))
+            self.assertEqual(absences, capture_signals.parse_absences(path))
+            self.assertEqual(len(events), 1)
+            self.assertEqual(len(absences), 1)
+            self.assertEqual(events[0].meta["title"], "Standup")
+            self.assertEqual(absences[0].kind, LEAVE)
+        finally:
+            path.unlink()
+
+    def test_parse_calendar_reads_file_once(self) -> None:
+        """parse_calendar must read the calendar a single time."""
+        ics = (
+            "BEGIN:VCALENDAR\nVERSION:2.0\n"
+            "BEGIN:VEVENT\nUID:m1\nDTSTART:20260817T090000Z\nDTEND:20260817T100000Z\n"
+            "SUMMARY:Standup\nEND:VEVENT\n"
+            "BEGIN:VEVENT\nUID:a1\nDTSTART;VALUE=DATE:20260817\nDTEND;VALUE=DATE:20260818\n"
+            "SUMMARY:Out of office\nEND:VEVENT\n"
+            "END:VCALENDAR\n"
+        )
+        path = self._write_ics(ics)
+        try:
+            original = capture_signals._vevents
+            calls = 0
+
+            def counting_vevents(p: Path):
+                nonlocal calls
+                calls += 1
+                return original(p)
+
+            with unittest.mock.patch("capture_signals._vevents", counting_vevents):
+                events, absences = capture_signals.parse_calendar(path)
+            self.assertEqual(calls, 1)
+            self.assertEqual(len(events), 1)
+            self.assertEqual(len(absences), 1)
+        finally:
+            path.unlink()
+
     def test_parse_notifications(self):
         with tempfile.NamedTemporaryFile("w", suffix=".log", delete=False) as fh:
             fh.write("2026-08-17T09:02:00Z slack\n")

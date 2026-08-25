@@ -24,6 +24,7 @@ from .actions import (
     export_ics,
     export_tasks_csv,
     load_audit,
+    new_plan_id,
     record_approval,
 )
 from .baseline import append_score, clear_history, load_history
@@ -199,7 +200,23 @@ def midday(req: MiddayRequest) -> dict[str, Any]:
         req.total_minutes,
         workers=workers,
     )
-    return asdict(review)
+    result = asdict(review)
+    if review.plan is not None:
+        # Store the afternoon plan so it can be approved and exported through
+        # the same endpoints as the morning plan (accept -> export .ics/.csv).
+        review.plan.plan_id = review.plan.plan_id or new_plan_id()
+        plan_id = review.plan.plan_id
+        PLANS[plan_id] = {
+            "payload": {
+                "load_report": asdict(review.plan.load_report),
+                "plan": asdict(review.plan),
+            },
+            "tasks": [asdict(t) for t in tasks],
+            "events": [asdict(e) for e in events],
+            "workers": [asdict(w) for w in workers],
+        }
+        result["plan_id"] = plan_id
+    return result
 
 
 @app.post("/approve")

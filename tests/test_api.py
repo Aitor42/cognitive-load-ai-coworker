@@ -279,6 +279,77 @@ class TestApi(unittest.TestCase):
         self.assertIn("reorganized", data)
         self.assertIn("reassignment_alerts", data)
 
+    def _busy_day_events(self) -> list[dict]:
+        """A dense day that reliably projects to overload and triggers a replan."""
+        events: list[dict] = []
+        for h in range(8):
+            t = 8 * 3600 + h * 3600
+            events.append({"timestamp": t, "kind": "meeting", "duration_minutes": 50.0})
+            for i in range(20):
+                events.append(
+                    {
+                        "timestamp": t + 120 + i * 150,
+                        "kind": "notification",
+                        "meta": {"source": "slack"},
+                    }
+                )
+                events.append(
+                    {
+                        "timestamp": t + 180 + i * 150,
+                        "kind": "context_switch",
+                        "meta": {"from": "a", "to": "b"},
+                    }
+                )
+        return events
+
+    def test_midday_without_replan_stores_nothing(self) -> None:
+        """A calm day does not re-organize, so no plan is stored."""
+        calm = [
+            {"timestamp": 8 * 3600 + h * 3600, "kind": "focus_block", "duration_minutes": 55.0}
+            for h in range(8)
+        ]
+        resp = self.client.post(
+            "/midday",
+            json={
+                "events": calm,
+                "tasks": self.client.get("/sample").json()["tasks"],
+                "elapsed_minutes": 480.0,
+                "total_minutes": 480.0,
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertFalse(data["reorganized"])
+        self.assertNotIn("plan_id", data)
+
+    def test_midday_plan_can_be_approved_and_exported(self) -> None:
+        """The afternoon plan must be stored so it can be accepted and exported."""
+        tasks = self.client.get("/sample").json()["tasks"]
+        resp = self.client.post(
+            "/midday",
+            json={
+                "events": self._busy_day_events(),
+                "tasks": tasks,
+                "elapsed_minutes": 480.0,
+                "total_minutes": 480.0,
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data["reorganized"])
+        self.assertIn("plan_id", data)
+        pid = data["plan_id"]
+        self.assertIn(pid, PLANS)
+
+        appr = self.client.post("/approve", json={"plan_id": pid, "decision": "accepted"})
+        self.assertEqual(appr.status_code, 200)
+        self.assertEqual(appr.json()["status"], "accepted")
+
+        ics = self.client.get(f"/plan/{pid}/export.ics")
+        self.assertEqual(ics.status_code, 200)
+        self.assertIn("BEGIN:VCALENDAR", ics.text)
+        self.assertIn("BEGIN:VEVENT", ics.text)
+
     def test_privacy_mentions_absence_reason(self) -> None:
         p = self.client.get("/privacy").json()
         self.assertIn("the medical or personal reason for an absence", p["never_captured"])

@@ -370,7 +370,16 @@ async function middayReview(){
     const r=await api("/midday",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({events:EVENTS,tasks:TASKS,workers:WORKERS,elapsed_minutes:elapsed,total_minutes:480})});
     const planHtml=(r.reorganized&&r.plan&&r.plan.items&&r.plan.items.length)
-      ? `<h2 style="margin-top:14px">Reorganized plan</h2><ul>${itemRowsHtml(r.plan.items)}</ul>` : "";
+      ? `<h2 style="margin-top:14px">Reorganized plan</h2><ul>${itemRowsHtml(r.plan.items)}</ul>
+         <div class="actions" id="middayActions">
+           <button class="green" onclick="decideMidday('accepted','${esc(r.plan.plan_id)}')">Accept afternoon plan</button>
+           <button class="red" onclick="decideMidday('rejected','${esc(r.plan.plan_id)}')">Reject afternoon plan</button>
+           <span class="exportlinks">
+             <a href="/plan/${esc(r.plan.plan_id)}/export.ics" download>📅 Export afternoon (.ics)</a>
+             <a href="/plan/${esc(r.plan.plan_id)}/export.csv" download>📋 Export afternoon (.csv)</a>
+           </span>
+         </div>
+         <div class="meta" id="middayStatus"></div>` : "";
     box.innerHTML=`
       <div class="card" style="margin-top:20px">
         <h2>🕛 Midday review</h2>
@@ -382,6 +391,21 @@ async function middayReview(){
         ${planHtml}
         <h2 style="margin-top:14px">Reassignments</h2>${alertsHtml(r.reassignment_alerts)}
       </div>`;
+  }catch(e){document.getElementById("err").textContent="⚠ "+e.message;}
+}
+
+async function decideMidday(decision,planId){
+  try{
+    const r=await api("/approve",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({plan_id:planId,decision})});
+    const el=document.getElementById("middayStatus");
+    if(el){
+      el.innerHTML = decision==="accepted"
+        ? "✅ Afternoon plan accepted — protected blocks exported to your calendar."
+        : "❌ Afternoon plan rejected — your afternoon stays as it is.";
+    }
+    const btns=document.getElementById("middayActions");
+    if(btns) btns.querySelectorAll("button").forEach(b=>b.disabled=true);
   }catch(e){document.getElementById("err").textContent="⚠ "+e.message;}
 }
 

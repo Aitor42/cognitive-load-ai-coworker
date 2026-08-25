@@ -153,7 +153,13 @@ def _explanation(
     weighted = {k: c * active.get(k, 0.0) for k, c in _contributions(factors).items()}
     top = sorted(weighted.items(), key=lambda kv: kv[1], reverse=True)[:2]
     drivers = ", ".join(factor_names[k] for k, _ in top)
-    return f"Main drivers: {drivers}."
+    text = f"Main drivers: {drivers}."
+    # The interaction term can dominate the score without showing up in the
+    # top drivers, so surface it whenever it is meaningful.
+    interaction = _interaction_bonus(_contributions(factors)) * INTERACTION_WEIGHT
+    if interaction >= 0.02:
+        text += " Compounding meetings and interruptions amplify the load."
+    return text
 
 
 def score(

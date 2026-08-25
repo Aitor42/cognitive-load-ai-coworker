@@ -120,8 +120,7 @@ class TestExportIcs(unittest.TestCase):
             load_report=LoadReport(score=80.0, level="overload"),
             plan_id="x",
             items=[
-                PlanItem(position=i, action="focus_block", title=f"Focus {i}")
-                for i in range(1, 5)
+                PlanItem(position=i, action="focus_block", title=f"Focus {i}") for i in range(1, 5)
             ],
         )
         # Start 22:13:20Z: blocks at 22:13, 22:58, 23:43 (all before midnight)
@@ -135,8 +134,7 @@ class TestExportIcs(unittest.TestCase):
             load_report=LoadReport(score=80.0, level="overload"),
             plan_id="x",
             items=[
-                PlanItem(position=i, action="focus_block", title=f"Focus {i}")
-                for i in range(1, 5)
+                PlanItem(position=i, action="focus_block", title=f"Focus {i}") for i in range(1, 5)
             ],
         )
         ics = export_ics(

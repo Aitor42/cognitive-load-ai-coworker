@@ -76,19 +76,27 @@ See [`architecture.mmd`](architecture.mmd) for the full Mermaid diagram.
 
 ## Signal proxies
 
-| Feature | What it measures | Normalization threshold |
+| Feature | What it measures | Normalization (0..1) |
 | --- | --- | --- |
-| `context_switches_per_hour` | Interruption frequency | 12/h → 1.0 |
-| `meeting_ratio` | Share of window in meetings | 1.0 (already 0..1) |
-| `notification_rate` | Inbound notifications per hour | 30/h → 1.0 |
-| `focus_ratio` (inverted) | Share of window in focus blocks | 1.0 (already 0..1) |
-| `multitasking_index` | Share of context switches during meetings | 1.0 (already 0..1) |
+| `context_switches_per_hour` | Interruption frequency | Hill sigmoid, midpoint 6/h (12/h → 0.67) |
+| `meeting_ratio` | Share of window in meetings | Linear clamp (already 0..1) |
+| `notification_rate` | Inbound notifications per hour | Hill sigmoid, midpoint 10/h (30/h → 0.75) |
+| `focus_ratio` (inverted) | Share of window in focus blocks | Linear, inverted (1 − ratio) |
+| `multitasking_index` | Share of context switches during meetings | Linear clamp (already 0..1) |
 
 ## Scoring
 
+Each factor is normalized to 0..1 via a smooth **Hill sigmoid** ``σ(x) = x / (x + midpoint)``
+(returns 0.5 at the midpoint, approaches 1.0 asymptotically — no hard saturation), except the
+ratios that already live in 0..1. The score combines the weighted base with an **interaction
+term** that captures compounding stressors (interruptions during dense meetings):
+
 ```text
-score = 100 * (0.30*switches + 0.20*meetings + 0.20*notifications
-               + 0.15*(1 - focus) + 0.15*multitasking)
+score = 100 * min(base + interaction, 1.0)
+
+base       = 0.30*σ(switches) + 0.20*meetings + 0.20*σ(notifications)
+             + 0.15*(1 − focus) + 0.15*multitasking
+interaction = 0.10 * meetings * max(σ(switches), σ(notifications))
 ```
 
 Interruption frequency (switches + notifications, combined weight 0.50) is the dominant term

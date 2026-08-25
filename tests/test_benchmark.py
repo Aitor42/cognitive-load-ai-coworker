@@ -209,7 +209,9 @@ class TestCapture(unittest.TestCase):
         from zoneinfo import ZoneInfo
 
         expected = datetime(2026, 8, 17, 9, 0, tzinfo=ZoneInfo("Europe/Madrid")).timestamp()
-        self.assertEqual(capture_signals._parse_ics_datetime("20260817T090000", "Europe/Madrid"), expected)
+        self.assertEqual(
+            capture_signals._parse_ics_datetime("20260817T090000", "Europe/Madrid"), expected
+        )
 
     def test_parse_ics_datetime_with_numeric_offset(self) -> None:
         self.assertEqual(
@@ -267,14 +269,18 @@ class TestCapture(unittest.TestCase):
 
     def test_expand_rrule_weekly_byday_skips_days_before_start(self) -> None:
         start = datetime(2026, 8, 19, 9, 0, tzinfo=timezone.utc).timestamp()  # Wednesday
-        starts = capture_signals._expand_rrule(start, {"FREQ": "WEEKLY", "BYDAY": "MO,WE", "COUNT": "4"})
+        starts = capture_signals._expand_rrule(
+            start, {"FREQ": "WEEKLY", "BYDAY": "MO,WE", "COUNT": "4"}
+        )
         days = [datetime.fromtimestamp(ts, tz=timezone.utc).date().isoformat() for ts in starts]
         # The Monday before the Wednesday start is skipped; then MO/WE recur.
         self.assertEqual(days, ["2026-08-19", "2026-08-24", "2026-08-26", "2026-08-31"])
 
     def test_expand_rrule_weekly_interval(self) -> None:
         start = datetime(2026, 8, 17, 9, 0, tzinfo=timezone.utc).timestamp()  # Monday
-        starts = capture_signals._expand_rrule(start, {"FREQ": "WEEKLY", "INTERVAL": "2", "COUNT": "3"})
+        starts = capture_signals._expand_rrule(
+            start, {"FREQ": "WEEKLY", "INTERVAL": "2", "COUNT": "3"}
+        )
         days = [datetime.fromtimestamp(ts, tz=timezone.utc).date().isoformat() for ts in starts]
         self.assertEqual(days, ["2026-08-17", "2026-08-31", "2026-09-14"])
 

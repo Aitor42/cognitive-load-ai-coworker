@@ -218,9 +218,7 @@ def _absence_end(
 def _parse_rrule(value: str) -> dict[str, str]:
     """Parse an RFC 5545 RRULE string into a {part: value} dict."""
     return {
-        part.split("=", 1)[0]: part.split("=", 1)[1]
-        for part in value.split(";")
-        if "=" in part
+        part.split("=", 1)[0]: part.split("=", 1)[1] for part in value.split(";") if "=" in part
     }
 
 

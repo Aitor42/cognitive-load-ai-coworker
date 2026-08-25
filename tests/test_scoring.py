@@ -399,6 +399,17 @@ class TestScoreContract(unittest.TestCase):
         self.assertIn("context switches per hour", report.explanation)
         self.assertNotIn("focus time", report.explanation)
 
+    def test_explanation_mentions_compounding_interaction(self) -> None:
+        """When meetings and interruptions overlap, the explanation says so."""
+        report = score(
+            FeatureSet(
+                context_switches_per_hour=12.0,
+                meeting_ratio=1.0,
+                focus_ratio=0.0,
+            )
+        )
+        self.assertIn("Compounding meetings and interruptions", report.explanation)
+
     def test_explanation_names_two_drivers(self) -> None:
         report = score(
             FeatureSet(context_switches_per_hour=12.0, notification_rate=30.0, focus_ratio=1.0)

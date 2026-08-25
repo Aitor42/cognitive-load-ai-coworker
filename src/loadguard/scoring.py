@@ -2,25 +2,56 @@
 
 The score is a weighted, normalized combination of behavioral proxies.  Each
 proxy is normalized to 0..1 via a smooth **sigmoid (Hill function)** that
-avoids the hard saturation of a linear clamp, then combined with fixed,
-documented weights plus an **interaction term** that captures compounding
-stressors (e.g. interruptions during dense meetings).  This makes every
-recommendation traceable back to the underlying signals.
+avoids the hard saturation of a linear clamp, then combined with documented
+weights plus an **interaction term** that captures compounding stressors (e.g.
+interruptions during dense meetings).
+
+Role profiles and custom weights are supported, enabling role-specific
+cognitive load calibration (e.g. deep-writing researchers vs. coordination
+heavy managers).
 """
 
 from __future__ import annotations
 
 from .models import HIGH, LOW, MODERATE, OVERLOAD, FeatureSet, LoadReport
 
-# Weights for individual factors (sum to 1.0).  Interruption frequency
-# (context switches, notifications) still dominates, since it is the
-# strongest behavioral proxy for cognitive load.
-WEIGHTS = {
+# Default weights for individual factors (sum to 1.0). Interruption frequency
+# (context switches, notifications) dominates by default.
+DEFAULT_WEIGHTS = {
     "context_switches_per_hour": 0.30,
     "meeting_ratio": 0.20,
     "notification_rate": 0.20,
     "focus_ratio": 0.15,  # inverted: less focus -> more load
     "multitasking_index": 0.15,
+}
+
+# Alias for backwards compatibility with tests and callers
+WEIGHTS = DEFAULT_WEIGHTS
+
+# Role-specific profiles tailoring factor sensitivity to different work styles.
+ROLE_PROFILES: dict[str, dict[str, float]] = {
+    "default": DEFAULT_WEIGHTS,
+    "developer": {
+        "context_switches_per_hour": 0.35,
+        "meeting_ratio": 0.15,
+        "notification_rate": 0.20,
+        "focus_ratio": 0.20,
+        "multitasking_index": 0.10,
+    },
+    "researcher": {
+        "context_switches_per_hour": 0.20,
+        "meeting_ratio": 0.15,
+        "notification_rate": 0.15,
+        "focus_ratio": 0.35,  # high focus sensitivity for deep writing/synthesis
+        "multitasking_index": 0.15,
+    },
+    "manager": {
+        "context_switches_per_hour": 0.25,
+        "meeting_ratio": 0.25,
+        "notification_rate": 0.25,
+        "focus_ratio": 0.10,
+        "multitasking_index": 0.15,
+    },
 }
 
 # Interaction weight: when meetings and interruptions overlap, the combined
@@ -92,7 +123,24 @@ def _interaction_bonus(contributions: dict[str, float]) -> float:
     return meeting * interruption
 
 
-def _explanation(factors: dict[str, float]) -> str:
+def _resolve_weights(
+    weights: dict[str, float] | None = None,
+    role: str | None = None,
+) -> dict[str, float]:
+    """Resolve and normalize factor weights from custom dict or role profile."""
+    if weights is not None:
+        total = sum(weights.values())
+        if total > 0:
+            return {k: weights.get(k, 0.0) / total for k in DEFAULT_WEIGHTS}
+    if role is not None and role in ROLE_PROFILES:
+        return ROLE_PROFILES[role]
+    return DEFAULT_WEIGHTS
+
+
+def _explanation(
+    factors: dict[str, float],
+    weights: dict[str, float] | None = None,
+) -> str:
     factor_names = {
         "context_switches_per_hour": "context switches per hour",
         "meeting_ratio": "meeting density",
@@ -100,15 +148,25 @@ def _explanation(factors: dict[str, float]) -> str:
         "focus_ratio": "focus time",
         "multitasking_index": "multitasking",
     }
+    active = weights if weights is not None else DEFAULT_WEIGHTS
     # Rank by weighted contribution (descending), consistent with score().
-    weighted = {k: c * WEIGHTS[k] for k, c in _contributions(factors).items()}
+    weighted = {k: c * active.get(k, 0.0) for k, c in _contributions(factors).items()}
     top = sorted(weighted.items(), key=lambda kv: kv[1], reverse=True)[:2]
     drivers = ", ".join(factor_names[k] for k, _ in top)
     return f"Main drivers: {drivers}."
 
 
-def score(features: FeatureSet) -> LoadReport:
-    """Compute a Cognitive Load Score from a FeatureSet."""
+def score(
+    features: FeatureSet,
+    weights: dict[str, float] | None = None,
+    role: str | None = None,
+) -> LoadReport:
+    """Compute a Cognitive Load Score from a FeatureSet.
+
+    Supports custom weights or role-specific profiles (e.g. "developer",
+    "researcher", "manager").
+    """
+    active_weights = _resolve_weights(weights, role)
     factors = {
         "context_switches_per_hour": round(features.context_switches_per_hour, 2),
         "meeting_ratio": round(features.meeting_ratio, 2),
@@ -117,7 +175,7 @@ def score(features: FeatureSet) -> LoadReport:
         "multitasking_index": round(features.multitasking_index, 2),
     }
     contributions = _contributions(factors)
-    base = sum(contributions[k] * WEIGHTS[k] for k in WEIGHTS)
+    base = sum(contributions[k] * active_weights.get(k, 0.0) for k in active_weights)
     interaction = _interaction_bonus(contributions) * INTERACTION_WEIGHT
     total = min(base + interaction, 1.0)
     value = round(total * 100.0, 1)
@@ -127,5 +185,5 @@ def score(features: FeatureSet) -> LoadReport:
         score=value,
         level=level,
         factors=factors,
-        explanation=_explanation(factors),
+        explanation=_explanation(factors, active_weights),
     )

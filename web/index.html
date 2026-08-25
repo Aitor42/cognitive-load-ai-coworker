@@ -147,12 +147,12 @@ function timelineHtml(events){
 function topDriver(lr){
   const contrib={};
   for(const k of Object.keys(LABELS)){
-    let v=lr.factors[k];
-    if(k==="context_switches_per_hour") v=Math.min(v/12,1)*0.30;
-    else if(k==="notification_rate") v=Math.min(v/30,1)*0.20;
-    else if(k==="focus_ratio") v=(1-v)*0.15;
-    else if(k==="meeting_ratio") v=v*0.20;
-    else v=v*0.15;
+    let v=lr.factors[k]||0;
+    if(k==="context_switches_per_hour") v=(v > 0 ? v / (v + 6.0) : 0) * 0.30;
+    else if(k==="notification_rate") v=(v > 0 ? v / (v + 10.0) : 0) * 0.20;
+    else if(k==="focus_ratio") v=Math.max(0, Math.min(1 - v, 1)) * 0.15;
+    else if(k==="meeting_ratio") v=Math.max(0, Math.min(v, 1)) * 0.20;
+    else v=Math.max(0, Math.min(v, 1)) * 0.15;
     contrib[k]=v;
   }
   return Object.entries(contrib).sort((a,b)=>b[1]-a[1])[0][0];

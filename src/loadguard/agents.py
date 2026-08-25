@@ -8,7 +8,7 @@ LangGraph StateGraph for orchestration and tool use without changes.
 from __future__ import annotations
 
 from .llm import ChatModel, HeuristicModel
-from .models import Event, FeatureSet, LoadReport, Plan, Task
+from .models import Event, FeatureSet, LoadReport, Plan, Task, Worker
 from .recommender import build_plan
 from .scoring import score
 from .signals import compute_features
@@ -28,8 +28,13 @@ class LoadDiagnosticianAgent:
 
     name = "LoadDiagnostician"
 
-    def run(self, features: FeatureSet) -> LoadReport:
-        return score(features)
+    def run(
+        self,
+        features: FeatureSet,
+        role: str | None = None,
+        weights: dict[str, float] | None = None,
+    ) -> LoadReport:
+        return score(features, weights=weights, role=role)
 
 
 class WorkloadPlannerAgent:
@@ -37,8 +42,23 @@ class WorkloadPlannerAgent:
 
     name = "WorkloadPlanner"
 
-    def run(self, tasks: list[Task], load_report: LoadReport) -> Plan:
-        return build_plan(tasks, load_report)
+    def run(
+        self,
+        tasks: list[Task],
+        load_report: LoadReport,
+        workers: list[Worker] | None = None,
+        now: float | None = None,
+        audit_history: list[dict] | None = None,
+        hour_of_day: float | None = None,
+    ) -> Plan:
+        return build_plan(
+            tasks,
+            load_report,
+            workers=workers,
+            now=now,
+            audit_history=audit_history,
+            hour_of_day=hour_of_day,
+        )
 
 
 class NarratorAgent:

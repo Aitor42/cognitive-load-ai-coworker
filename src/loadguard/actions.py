@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .models import Plan, Task
+from .models import MEETING, Event, Plan, Task
 
 # Default durations (minutes) for the blocks LoadGuard schedules.
 BLOCK_DURATIONS = {"focus_block": 45.0, "break": 15.0}
@@ -64,16 +64,46 @@ def _ics_escape(text: str) -> str:
     )
 
 
-def export_ics(plan: Plan, tasks: list[Task], start_epoch: float | None = None) -> str:
+def _find_next_free_slot(
+    cursor: float, duration_seconds: float, busy_intervals: list[tuple[float, float]]
+) -> float:
+    """Advance cursor past any overlapping busy intervals until a contiguous free window fits."""
+    sorted_busy = sorted([b for b in busy_intervals if b[1] > cursor], key=lambda x: x[0])
+    while True:
+        end = cursor + duration_seconds
+        overlap = next((b for b in sorted_busy if max(cursor, b[0]) < min(end, b[1])), None)
+        if overlap is None:
+            return cursor
+        cursor = max(cursor, overlap[1])
+
+
+def export_ics(
+    plan: Plan,
+    tasks: list[Task],
+    start_epoch: float | None = None,
+    existing_events: list[Event] | None = None,
+    busy_intervals: list[tuple[float, float]] | None = None,
+) -> str:
     """Render the plan's focus/recovery blocks as an iCalendar (.ics) string.
 
     The day is walked in plan order: ``do`` items consume their task duration,
     minor steps (delegate/batch) a small hand-off time, and every
     focus/break block becomes a VEVENT at its scheduled position.
+
+    When *existing_events* or *busy_intervals* are provided, collision detection
+    skips over existing meetings and scheduled commitments, placing blocks only
+    in genuine free gaps.
     """
     if start_epoch is None:
         start_epoch = float(math.ceil(time.time() / 900.0) * 900)
     cursor = start_epoch
+
+    all_busy: list[tuple[float, float]] = list(busy_intervals or [])
+    if existing_events:
+        for e in existing_events:
+            if e.kind in (MEETING, "meeting", "busy") and e.duration_minutes > 0:
+                all_busy.append((e.timestamp, e.timestamp + e.duration_minutes * 60.0))
+
     task_durations = {t.id: max(0.0, float(t.duration_minutes)) for t in tasks}
 
     lines = [
@@ -85,33 +115,39 @@ def export_ics(plan: Plan, tasks: list[Task], start_epoch: float | None = None) 
     for item in plan.items:
         if item.action in BLOCK_DURATIONS:
             duration = BLOCK_DURATIONS[item.action]
+            dur_seconds = duration * 60.0
+            if all_busy:
+                cursor = _find_next_free_slot(cursor, dur_seconds, all_busy)
             lines += [
                 "BEGIN:VEVENT",
                 f"UID:loadguard-{plan.plan_id or 'plan'}-{item.position}@loadguard",
                 f"DTSTAMP:{_ics_datetime(cursor)}",
                 f"DTSTART:{_ics_datetime(cursor)}",
-                f"DTEND:{_ics_datetime(cursor + duration * 60.0)}",
+                f"DTEND:{_ics_datetime(cursor + dur_seconds)}",
                 f"SUMMARY:{_ics_escape(item.title)}",
             ]
             if item.rationale:
                 lines.append(f"DESCRIPTION:{_ics_escape(item.rationale)}")
             lines.append("END:VEVENT")
-            cursor += duration * 60.0
+            cursor += dur_seconds
         elif item.action == "do" and item.task_id:
             duration = task_durations.get(item.task_id, 30.0)
+            dur_seconds = duration * 60.0
+            if all_busy:
+                cursor = _find_next_free_slot(cursor, dur_seconds, all_busy)
             lines += [
                 "BEGIN:VEVENT",
                 f"UID:loadguard-{plan.plan_id or 'plan'}-{item.position}@loadguard",
                 f"DTSTAMP:{_ics_datetime(cursor)}",
                 f"DTSTART:{_ics_datetime(cursor)}",
-                f"DTEND:{_ics_datetime(cursor + duration * 60.0)}",
+                f"DTEND:{_ics_datetime(cursor + dur_seconds)}",
                 f"SUMMARY:{_ics_escape(item.title)}",
                 "CATEGORIES:LOADGUARD-TASK",
             ]
             if item.rationale:
                 lines.append(f"DESCRIPTION:{_ics_escape(item.rationale)}")
             lines.append("END:VEVENT")
-            cursor += duration * 60.0
+            cursor += dur_seconds
         elif item.action in ("delegate", "batch"):
             cursor += MINOR_STEP_MINUTES * 60.0
     lines.append("END:VCALENDAR")

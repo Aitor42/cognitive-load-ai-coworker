@@ -62,13 +62,24 @@ def run_workflow(
     guardian_model: ChatModel | None = None,
     workers: list[Worker] | None = None,
     now: float | None = None,
+    audit_history: list[dict] | None = None,
+    role: str | None = None,
+    weights: dict[str, float] | None = None,
+    hour_of_day: float | None = None,
 ) -> WorkflowResult:
     """Run the full sense -> diagnose -> plan -> validate -> approve -> impact pipeline."""
     features = SignalAnalystAgent().run(events, window_minutes)
-    load_report = LoadDiagnosticianAgent().run(features)
+    load_report = LoadDiagnosticianAgent().run(features, role=role, weights=weights)
 
-    # 1) Deterministic safety-baseline plan.
-    base_plan = WorkloadPlannerAgent().run(tasks, load_report)
+    # 1) Deterministic safety-baseline plan (respects past audit decisions & time of day).
+    base_plan = WorkloadPlannerAgent().run(
+        tasks,
+        load_report,
+        workers=workers,
+        now=now,
+        audit_history=audit_history,
+        hour_of_day=hour_of_day,
+    )
     base_plan.plan_id = plan_id or new_plan_id()
 
     # 2) Granite proposes structured adjustments; the gate decides if they apply.
@@ -86,7 +97,8 @@ def run_workflow(
     # 4) Human approval state.
     plan.status = approval if approval in ("accepted", "rejected", "edited") else PENDING
 
-    impact = estimate_impact(features, plan)
+    # 5) Impact estimation with history-calibrated effectiveness.
+    impact = estimate_impact(features, plan, history=history)
 
     personal = compute_baseline(history or [])
     alerts = find_reassignment_alerts(tasks, workers or [], now)

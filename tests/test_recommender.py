@@ -162,6 +162,86 @@ class TestBuildPlan(unittest.TestCase):
         delegated = [i for i in plan.items if i.action == "delegate"]
         self.assertIn("Warning: no available teammates", delegated[0].rationale)
 
+    def test_rejected_batch_in_audit_prevents_batching(self) -> None:
+        """When user previously rejected batching, the planner does not propose it."""
+        audit = [{"decision": "rejected", "feedback": "please no batching"}]
+        report = score(FeatureSet(notification_rate=30.0, focus_ratio=1.0))
+        plan = build_plan([Task(id="a", title="Work", priority=3)], report, audit_history=audit)
+        actions = [i.action for i in plan.items]
+        self.assertNotIn("batch", actions)
+
+    def test_rejected_focus_block_in_audit_prevents_focus(self) -> None:
+        audit = [{"decision": "rejected", "feedback": "don't focus block me"}]
+        report = score(FeatureSet(focus_ratio=0.05))
+        plan = build_plan([Task(id="a", title="Work", priority=5)], report, audit_history=audit)
+        actions = [i.action for i in plan.items]
+        self.assertNotIn("focus_block", actions)
+
+    def test_rejected_break_in_audit_prevents_break(self) -> None:
+        audit = [{"decision": "rejected", "feedback": "no breaks please"}]
+        tasks = [
+            Task(id="a", title="A", priority=5, duration_minutes=50.0),
+            Task(id="b", title="B", priority=5, duration_minutes=50.0),
+        ]
+        plan = build_plan(tasks, _overload_report(), audit_history=audit)
+        actions = [i.action for i in plan.items]
+        self.assertNotIn("break", actions)
+
+    def test_rejected_delegate_in_audit_keeps_as_do(self) -> None:
+        audit = [{"decision": "rejected", "feedback": "never delegate my tasks"}]
+        tasks = [Task(id="a", title="A", priority=1)]
+        plan = build_plan(tasks, _overload_report(), audit_history=audit)
+        actions = [i.action for i in plan.items]
+        self.assertNotIn("delegate", actions)
+        self.assertIn("do", actions)
+
+    def test_accepted_audit_does_not_filter_actions(self) -> None:
+        audit = [{"decision": "accepted", "feedback": "great plan"}]
+        report = score(FeatureSet(notification_rate=30.0, focus_ratio=1.0))
+        plan = build_plan([Task(id="a", title="Work", priority=3)], report, audit_history=audit)
+        actions = [i.action for i in plan.items]
+        self.assertIn("batch", actions)
+
+    def test_late_day_raises_delegation_threshold(self) -> None:
+        """In late afternoon (hour >= 16.0), high load delegates up to priority 2 tasks."""
+        tasks = [
+            Task(id="p2", title="Task p2", priority=2),
+            Task(id="p5", title="Task p5", priority=5),
+        ]
+        # HIGH level normally delegates max priority 1. At 17:00, delegates priority 2.
+        report = score(
+            FeatureSet(
+                context_switches_per_hour=15.0,
+                meeting_ratio=0.5,
+                notification_rate=20.0,
+                focus_ratio=0.0,
+            )
+        )
+        self.assertEqual(report.level, "high")
+        plan = build_plan(tasks, report, hour_of_day=17.0)
+        delegated = [i for i in plan.items if i.action == "delegate"]
+        self.assertEqual({i.task_id for i in delegated}, {"p2"})
+        self.assertIn("late-day protection", delegated[0].rationale)
+
+    def test_morning_keeps_standard_delegation_threshold(self) -> None:
+        tasks = [
+            Task(id="p2", title="Task p2", priority=2),
+            Task(id="p5", title="Task p5", priority=5),
+        ]
+        report = score(
+            FeatureSet(
+                context_switches_per_hour=15.0,
+                meeting_ratio=0.5,
+                notification_rate=20.0,
+                focus_ratio=0.0,
+            )
+        )
+        self.assertEqual(report.level, "high")
+        plan = build_plan(tasks, report, hour_of_day=9.0)
+        # At 9:00 AM under HIGH load, max priority 1 is delegated (priority 2 kept as do)
+        do_items = [i for i in plan.items if i.action == "do"]
+        self.assertIn("p2", [i.task_id for i in do_items])
+
 
 if __name__ == "__main__":
     unittest.main()

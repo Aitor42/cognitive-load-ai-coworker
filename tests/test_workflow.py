@@ -234,5 +234,37 @@ class TestSchedulerReactiveCheck(unittest.TestCase):
         self.assertFalse(should_recheck(70.0, 50.0))
 
 
+class TestWorkflowEnhancements(unittest.TestCase):
+    """Tests for audit history, role profiles, and time of day in workflow."""
+
+    def test_workflow_with_audit_history_respects_rejections(self):
+        tasks = [Task(id="a", title="Work", priority=3)]
+        audit = [{"decision": "rejected", "feedback": "please no batch"}]
+        result = run_workflow(_overload_events(), tasks, audit_history=audit)
+        actions = [i.action for i in result.plan.items]
+        self.assertNotIn("batch", actions)
+
+    def test_workflow_with_role_profile(self):
+        tasks = [Task(id="a", title="Deep work", priority=5)]
+        result_default = run_workflow(_overload_events(), tasks)
+        result_researcher = run_workflow(_overload_events(), tasks, role="researcher")
+        # Both produce valid reports and plans
+        self.assertIsNotNone(result_default.load_report)
+        self.assertIsNotNone(result_researcher.load_report)
+        self.assertIsNotNone(result_researcher.impact)
+
+    def test_impact_with_role_profile(self):
+        from loadguard.models import Plan, PlanItem
+
+        features = FeatureSet(focus_ratio=0.0)
+        report = score(features, role="researcher")
+        plan = Plan(
+            load_report=report,
+            items=[PlanItem(position=1, action="focus_block", title="Focus")],
+        )
+        impact = estimate_impact(features, plan, role="researcher")
+        self.assertGreater(impact.delta, 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()

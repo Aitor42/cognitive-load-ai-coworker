@@ -2,9 +2,19 @@
 
 The planner is intentionally rule-based and transparent.  It produces only the
 structured plan; the narrative is added separately by the Narrator agent.
+
+Integrates:
+- **Audit trail feedback**: respects user rejection patterns so rejected
+  actions are not repeatedly forced.
+- **Time-of-day awareness**: late afternoon shifts thresholds to protect
+  depleting cognitive reserves.
+- **Ultradian break rhythm**: inserts recovery breaks based on work duration.
+- **Energy-aware (quick-win) scheduling**: prioritizes short tasks under high load.
 """
 
 from __future__ import annotations
+
+from datetime import datetime, timezone
 
 from .availability import is_absent
 from .models import HIGH, OVERLOAD, TODO, LoadReport, Plan, PlanItem, Task, Worker
@@ -48,16 +58,55 @@ def _available_workers(
     return result
 
 
+def _parse_audit_preferences(audit_records: list[dict] | None) -> set[str]:
+    """Extract user rejection preferences from past audit trail records."""
+    rejected: set[str] = set()
+    if not audit_records:
+        return rejected
+    for rec in audit_records:
+        if rec.get("decision") == "rejected":
+            fb = (rec.get("feedback") or "").lower()
+            if "batch" in fb:
+                rejected.add("batch")
+            if "focus" in fb:
+                rejected.add("focus_block")
+            if "break" in fb:
+                rejected.add("break")
+            if "delegate" in fb:
+                rejected.add("delegate")
+    return rejected
+
+
 def build_plan(
     tasks: list[Task],
     load_report: LoadReport,
     workers: list[Worker] | None = None,
     now: float | None = None,
+    audit_history: list[dict] | None = None,
+    hour_of_day: float | None = None,
 ) -> Plan:
-    """Build a resequenced plan (structure only) from tasks and a load report."""
+    """Build a resequenced plan (structure only) from tasks and a load report.
+
+    Parameters:
+    - ``workers``: Optional list of team members for delegation suggestions.
+    - ``now``: Current epoch timestamp (used for absence checks and hour determination).
+    - ``audit_history``: Past approval/rejection records for closed-loop learning.
+    - ``hour_of_day``: Float 0..24 representing time of day for fatigue/urgency adjustments.
+    """
     level = load_report.level
     ordered = sorted(tasks, key=lambda t: _sort_key(t, level))
+
+    # Time-of-day awareness: determine hour if not explicitly provided
+    if hour_of_day is None and now is not None:
+        hour_of_day = float(datetime.fromtimestamp(now, tz=timezone.utc).hour)
+
+    is_late_day = hour_of_day is not None and hour_of_day >= 16.0
     delegate_max = DELEGATE_MAX_PRIORITY.get(level, 0)
+    if is_late_day and level in (HIGH, OVERLOAD):
+        # Late day fatigue: raise delegation threshold by +1 to protect depleted reserves
+        delegate_max = min(delegate_max + 1, 3)
+
+    rejected_actions = _parse_audit_preferences(audit_history)
 
     items: list[PlanItem] = []
     position = 0
@@ -75,8 +124,11 @@ def build_plan(
             )
         )
 
-    # Suggest batching notifications first if they are a significant driver.
-    if load_report.factors.get("notification_rate", 0.0) >= BATCH_THRESHOLD:
+    # Suggest batching notifications first if they are a significant driver and not rejected.
+    if (
+        load_report.factors.get("notification_rate", 0.0) >= BATCH_THRESHOLD
+        and "batch" not in rejected_actions
+    ):
         add(
             "batch",
             title="Batch notifications",
@@ -87,10 +139,14 @@ def build_plan(
     for task in ordered:
         if task.status != TODO:
             continue
-        if task.priority <= delegate_max:
-            rationale = (
-                f"Priority {task.priority}/5 and load is {level}; hand off to protect attention."
-            )
+        if task.priority <= delegate_max and "delegate" not in rejected_actions:
+            if is_late_day:
+                rationale = (
+                    f"Priority {task.priority}/5 and load is {level} (late-day protection); "
+                    "hand off to protect attention."
+                )
+            else:
+                rationale = f"Priority {task.priority}/5 and load is {level}; hand off to protect attention."
             # Suggest available teammates when worker information is provided.
             if workers is not None:
                 candidates = _available_workers(workers, task.assignee, now)
@@ -107,9 +163,12 @@ def build_plan(
             )
             accumulated_work += task.duration_minutes
             # Time-based breaks: insert after every BREAK_CADENCE_MINUTES of
-            # accumulated work instead of a fixed task count, so two 5-minute
-            # tasks don't trigger a needless break while a 3-hour task does.
-            if level in (HIGH, OVERLOAD) and accumulated_work >= BREAK_CADENCE_MINUTES:
+            # accumulated work instead of a fixed task count.
+            if (
+                level in (HIGH, OVERLOAD)
+                and accumulated_work >= BREAK_CADENCE_MINUTES
+                and "break" not in rejected_actions
+            ):
                 add(
                     "break",
                     title="Recovery break",
@@ -117,13 +176,11 @@ def build_plan(
                 )
                 accumulated_work = 0.0
 
-    # Schedule a focus block when focus time is scarce or load is elevated.
-    # Insert it *before* the first deep-work task so the developer starts with
-    # protected attention, rather than tacking it on at the end.
-    if load_report.factors.get("focus_ratio", 1.0) <= LOW_FOCUS_THRESHOLD or level in (
-        HIGH,
-        OVERLOAD,
-    ):
+    # Schedule a focus block when focus time is scarce or load is elevated, unless rejected.
+    if (
+        load_report.factors.get("focus_ratio", 1.0) <= LOW_FOCUS_THRESHOLD
+        or level in (HIGH, OVERLOAD)
+    ) and "focus_block" not in rejected_actions:
         first_do = next((i for i, item in enumerate(items) if item.action == "do"), len(items))
         focus_item = PlanItem(
             position=0,  # will be renumbered below

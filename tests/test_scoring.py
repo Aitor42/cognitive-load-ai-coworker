@@ -425,5 +425,44 @@ class TestScoreContract(unittest.TestCase):
         self.assertGreater(combined.score, cs_only.score + mtg_only.score)
 
 
+class TestRoleProfilesAndCustomWeights(unittest.TestCase):
+    """Tests for role-specific profiles and custom scoring weights."""
+
+    def test_researcher_profile_sensitizes_focus_loss(self) -> None:
+        """Researcher profile assigns higher weight to focus loss than default."""
+        f = FeatureSet(focus_ratio=0.0)  # zero focus
+        rep_default = score(f)
+        rep_researcher = score(f, role="researcher")
+        # In researcher profile, focus loss has weight 0.35 vs 0.15 in default
+        self.assertGreater(rep_researcher.score, rep_default.score)
+
+    def test_manager_profile_sensitizes_meetings_and_notifications(self) -> None:
+        """Manager profile weighs meetings/notifications higher."""
+        f = FeatureSet(meeting_ratio=0.8, notification_rate=20.0, focus_ratio=1.0)
+        rep_default = score(f)
+        rep_manager = score(f, role="manager")
+        self.assertGreater(rep_manager.score, rep_default.score)
+
+    def test_custom_weights_normalized(self) -> None:
+        """Custom weights are normalized to sum to 1.0."""
+        f = FeatureSet(context_switches_per_hour=12.0, focus_ratio=1.0)
+        custom = {"context_switches_per_hour": 100.0}
+        rep = score(f, weights=custom)
+        # All weight on context switches (midpoint 6 -> cs_norm = 2/3 ≈ 0.667 -> score 66.7)
+        self.assertAlmostEqual(rep.score, 66.7, places=1)
+
+    def test_unknown_role_falls_back_to_default(self) -> None:
+        f = FeatureSet(context_switches_per_hour=6.0, focus_ratio=0.5)
+        rep_default = score(f)
+        rep_unknown = score(f, role="astronaut")
+        self.assertEqual(rep_default.score, rep_unknown.score)
+
+    def test_zero_sum_custom_weights_falls_back(self) -> None:
+        f = FeatureSet(context_switches_per_hour=6.0, focus_ratio=0.5)
+        rep_default = score(f)
+        rep_zero = score(f, weights={"context_switches_per_hour": 0.0})
+        self.assertEqual(rep_default.score, rep_zero.score)
+
+
 if __name__ == "__main__":
     unittest.main()

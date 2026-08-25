@@ -94,6 +94,58 @@ class TestExportIcs(unittest.TestCase):
         ics = export_ics(plan, _tasks(), start_epoch=1_700_000_000.0)
         self.assertEqual(ics.count("BEGIN:VEVENT"), 0)
 
+    def test_export_ics_skips_overlapping_meeting(self):
+        """Focus block avoids colliding with existing meeting and starts in the free gap."""
+        from loadguard.models import Event, MEETING
+
+        existing = [Event(timestamp=1_700_000_000.0, kind=MEETING, duration_minutes=60.0)]
+        plan = Plan(
+            load_report=LoadReport(score=80.0, level="overload"),
+            plan_id="x",
+            items=[PlanItem(position=1, action="focus_block", title="Focus block")],
+        )
+        # Meeting runs 1700000000 -> 1700003600 (22:13:20 -> 23:13:20)
+        # Focus block should start at 23:13:20
+        ics = export_ics(plan, _tasks(), start_epoch=1_700_000_000.0, existing_events=existing)
+        self.assertIn("DTSTART:20231114T231320Z", ics)
+
+    def test_export_ics_with_busy_intervals(self):
+        """Custom busy intervals prevent collision."""
+        busy = [(1_700_000_000.0, 1_700_001_800.0)]  # 30 min busy
+        plan = Plan(
+            load_report=LoadReport(score=80.0, level="overload"),
+            plan_id="x",
+            items=[PlanItem(position=1, action="focus_block", title="Focus block")],
+        )
+        ics = export_ics(plan, _tasks(), start_epoch=1_700_000_000.0, busy_intervals=busy)
+        self.assertIn("DTSTART:20231114T224320Z", ics)
+
+    def test_export_ics_shifts_do_task_around_busy_intervals(self):
+        """Do tasks also avoid busy windows."""
+        busy = [(1_700_000_000.0, 1_700_001_800.0)]
+        plan = Plan(
+            load_report=LoadReport(score=80.0, level="overload"),
+            plan_id="x",
+            items=[PlanItem(position=1, action="do", task_id="a", title="Critical fix")],
+        )
+        ics = export_ics(plan, _tasks(), start_epoch=1_700_000_000.0, busy_intervals=busy)
+        self.assertIn("DTSTART:20231114T224320Z", ics)
+
+    def test_export_ics_ignores_zero_duration_or_non_meeting_events(self):
+        from loadguard.models import Event, NOTIFICATION, MEETING
+
+        events = [
+            Event(timestamp=1_700_000_000.0, kind=NOTIFICATION),
+            Event(timestamp=1_700_000_000.0, kind=MEETING, duration_minutes=0.0),
+        ]
+        plan = Plan(
+            load_report=LoadReport(score=80.0, level="overload"),
+            plan_id="x",
+            items=[PlanItem(position=1, action="focus_block", title="Focus block")],
+        )
+        ics = export_ics(plan, _tasks(), start_epoch=1_700_000_000.0, existing_events=events)
+        self.assertIn("DTSTART:20231114T221320Z", ics)
+
 
 class TestExportCsv(unittest.TestCase):
     def test_columns_and_rows(self):

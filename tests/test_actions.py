@@ -10,6 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from loadguard.actions import (  # noqa: E402
+    _ics_alarm_trigger,
     _ics_escape,
     _ics_fold,
     clear_audit,
@@ -142,6 +143,64 @@ class TestExportIcs(unittest.TestCase):
         # Continuation lines still start with exactly one space.
         for line in lines[1:]:
             self.assertTrue(line.startswith(" "))
+
+    def test_ics_alarm_trigger_format(self):
+        """Whole-minute leads render as -PTnM; others fall back to seconds."""
+        self.assertEqual(_ics_alarm_trigger(10.0), "-PT10M")
+        self.assertEqual(_ics_alarm_trigger(2.5), "-PT150S")
+        self.assertEqual(_ics_alarm_trigger(0.5), "-PT30S")
+
+    def test_export_ics_focus_block_has_valarm(self):
+        """Focus blocks carry a display alarm that fires before they start."""
+        plan = Plan(
+            load_report=LoadReport(score=80.0, level="overload"),
+            plan_id="x",
+            items=[PlanItem(position=1, action="focus_block", title="Deep work")],
+        )
+        ics = export_ics(plan, _tasks(), start_epoch=1_700_000_000.0)
+        self.assertIn("BEGIN:VALARM", ics)
+        self.assertIn("ACTION:DISPLAY", ics)
+        self.assertIn("DESCRIPTION:Focus block starts in 10 minutes", ics)
+        self.assertIn("TRIGGER:-PT10M", ics)
+        self.assertIn("END:VALARM", ics)
+        # The alarm nests inside the VEVENT, before it closes.
+        self.assertLess(ics.index("BEGIN:VALARM"), ics.index("END:VEVENT"))
+
+    def test_export_ics_non_focus_events_have_no_alarm(self):
+        """Breaks and resequenced tasks are exported without reminders."""
+        plan = Plan(
+            load_report=LoadReport(score=80.0, level="overload"),
+            plan_id="x",
+            items=[
+                PlanItem(position=1, action="break", title="Recovery break"),
+                PlanItem(position=2, action="do", task_id="a", title="Critical fix"),
+            ],
+        )
+        ics = export_ics(plan, _tasks(), start_epoch=1_700_000_000.0)
+        self.assertNotIn("BEGIN:VALARM", ics)
+
+    def test_export_ics_alarm_minutes_override(self):
+        """The lead time is configurable, including sub-minute triggers."""
+        plan = Plan(
+            load_report=LoadReport(score=80.0, level="overload"),
+            plan_id="x",
+            items=[PlanItem(position=1, action="focus_block", title="Deep work")],
+        )
+        ics = export_ics(plan, [], start_epoch=1_700_000_000.0, alarm_minutes=2.5)
+        self.assertIn("TRIGGER:-PT150S", ics)
+        self.assertIn("DESCRIPTION:Focus block starts in 2.5 minutes", ics)
+
+    def test_export_ics_alarm_disabled(self):
+        """None or zero disables the reminder entirely."""
+        plan = Plan(
+            load_report=LoadReport(score=80.0, level="overload"),
+            plan_id="x",
+            items=[PlanItem(position=1, action="focus_block", title="Deep work")],
+        )
+        ics = export_ics(plan, [], start_epoch=1_700_000_000.0, alarm_minutes=None)
+        self.assertNotIn("BEGIN:VALARM", ics)
+        ics_zero = export_ics(plan, [], start_epoch=1_700_000_000.0, alarm_minutes=0)
+        self.assertNotIn("BEGIN:VALARM", ics_zero)
 
     def test_ics_escape_roundtrip_non_ascii(self):
         """Non-ASCII titles survive escape + fold + standard unfold intact."""

@@ -28,6 +28,8 @@ from .models import MEETING, Event, Plan, Task
 
 # Default durations (minutes) for the blocks LoadGuard schedules.
 BLOCK_DURATIONS = {"focus_block": 45.0, "break": 15.0}
+# Lead time (minutes) of the VALARM reminder attached to exported focus blocks.
+FOCUS_ALARM_MINUTES = 10.0
 # Time (minutes) a delegated hand-off / notification batching takes in the day.
 MINOR_STEP_MINUTES = 5.0
 
@@ -51,6 +53,14 @@ class ApprovalRecord:
 
 def _ics_datetime(epoch: float) -> str:
     return datetime.fromtimestamp(epoch, tz=timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def _ics_alarm_trigger(minutes: float) -> str:
+    """Render an RFC 5545 TRIGGER duration that fires *minutes* before the start."""
+    seconds = int(round(minutes * 60))
+    if seconds % 60 == 0:
+        return f"-PT{seconds // 60}M"
+    return f"-PT{seconds}S"
 
 
 def _ics_escape(text: str) -> str:
@@ -117,6 +127,7 @@ def export_ics(
     existing_events: list[Event] | None = None,
     busy_intervals: list[tuple[float, float]] | None = None,
     horizon_epoch: float | None = None,
+    alarm_minutes: float | None = FOCUS_ALARM_MINUTES,
 ) -> str:
     """Render the plan's focus/recovery blocks as an iCalendar (.ics) string.
 
@@ -131,6 +142,9 @@ def export_ics(
     Blocks that would start at or after *horizon_epoch* (by default the end of
     the UTC day containing *start_epoch*) are not exported, so a plan cannot
     spill its protected blocks into the middle of the night.
+
+    Focus blocks carry a ``VALARM`` display reminder that fires *alarm_minutes*
+    before the block starts (pass ``None`` or ``0`` to export without alarms).
     """
     if start_epoch is None:
         start_epoch = float(math.ceil(time.time() / 900.0) * 900)
@@ -171,6 +185,15 @@ def export_ics(
             ]
             if item.rationale:
                 lines.append(_ics_fold(f"DESCRIPTION:{_ics_escape(item.rationale)}"))
+            if item.action == "focus_block" and alarm_minutes is not None and alarm_minutes > 0:
+                alarm_note = f"Focus block starts in {alarm_minutes:g} minutes"
+                lines += [
+                    "BEGIN:VALARM",
+                    "ACTION:DISPLAY",
+                    _ics_fold(f"DESCRIPTION:{_ics_escape(alarm_note)}"),
+                    f"TRIGGER:{_ics_alarm_trigger(alarm_minutes)}",
+                    "END:VALARM",
+                ]
             lines.append("END:VEVENT")
             cursor += dur_seconds
         elif item.action == "do":

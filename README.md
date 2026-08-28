@@ -212,7 +212,8 @@ extracts out-of-office / vacation events as absences (never the reason).
 - **Granite Guardian safety gate** — validates respect, no medical diagnosis, no sensitive data,
   in-scope; deterministic fallback always on.
 - **Human approval & action** — accept / edit / reject, then export protected blocks to **`.ics`**
-  and the resequenced tasks to **CSV**.
+  (focus blocks carry a `VALARM` reminder that fires before they start) and the resequenced
+  tasks to **CSV**.
 - **Personalized baseline & trend** — score vs. your own history, with trend direction and
   confidence.
 - **Team availability & absences** — track when a worker is on vacation or leave (only the fact

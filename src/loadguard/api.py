@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 
 from .actions import (
     APPROVAL_DECISIONS,
+    FOCUS_ALARM_MINUTES,
     clear_audit,
     export_ics,
     export_tasks_csv,
@@ -63,6 +64,9 @@ class AnalyzeRequest(BaseModel):
     history: Optional[list[float]] = None
     approval: Optional[str] = None
     workers: Optional[list[dict[str, Any]]] = None
+    # Lead time (minutes) of the VALARM reminder in the exported .ics calendar.
+    # None uses the server default (FOCUS_ALARM_MINUTES); 0 exports without alarms.
+    alarm_minutes: Optional[float] = Field(default=None, ge=0.0)
 
 
 class MiddayRequest(BaseModel):
@@ -183,7 +187,13 @@ def _store_plan(
     tasks: list[Task],
     events: list[Any],
     workers: list[Worker] | None = None,
+    alarm_minutes: float | None = None,
 ) -> dict[str, Any]:
+    """Persist a workflow result for later approval and export.
+
+    *alarm_minutes* is the VALARM lead time for the exported calendar; ``None``
+    resolves to the ``FOCUS_ALARM_MINUTES`` default (``0`` exports unalarmed).
+    """
     payload = asdict(result)
     plan_id = result.plan.plan_id
     PLANS[plan_id] = {
@@ -191,6 +201,7 @@ def _store_plan(
         "tasks": [asdict(t) for t in tasks],
         "events": events,
         "workers": [asdict(w) for w in workers] if workers else [],
+        "alarm_minutes": FOCUS_ALARM_MINUTES if alarm_minutes is None else alarm_minutes,
     }
     payload["plan_id"] = plan_id
     return payload
@@ -277,7 +288,9 @@ def analyze(req: AnalyzeRequest) -> dict[str, Any]:
         guardian_model=get_guardian_model(),
         workers=workers,
     )
-    return _store_plan(result, tasks, [asdict(e) for e in events], workers)
+    return _store_plan(
+        result, tasks, [asdict(e) for e in events], workers, alarm_minutes=req.alarm_minutes
+    )
 
 
 @app.post("/midday")
@@ -306,6 +319,7 @@ def midday(req: MiddayRequest) -> dict[str, Any]:
             "tasks": [asdict(t) for t in tasks],
             "events": [asdict(e) for e in events],
             "workers": [asdict(w) for w in workers],
+            "alarm_minutes": FOCUS_ALARM_MINUTES,
         }
         result["plan_id"] = plan_id
     return result
@@ -396,7 +410,7 @@ def export_plan_ics(plan_id: str) -> Response:
     plan = _plan_from_payload(stored["payload"])
     tasks = _to_tasks(stored["tasks"])
     return Response(
-        content=export_ics(plan, tasks),
+        content=export_ics(plan, tasks, alarm_minutes=stored["alarm_minutes"]),
         media_type="text/calendar",
         headers={"Content-Disposition": f'attachment; filename="loadguard-{plan_id}.ics"'},
     )

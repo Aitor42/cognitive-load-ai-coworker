@@ -314,6 +314,7 @@ pip install -r requirements.txt
 python app.py
 # GET  /                          -> interactive dashboard (loop + accept/edit/reject + timeline + privacy + pilot)
 # POST /analyze                   -> {"events": [...], "tasks": [...], "workers": [...]} + proposal + guardian + trend + reassignment alerts
+#                                    (optional "alarm_minutes" customizes the VALARM lead time of the exported .ics)
 # POST /ingest                    -> parse uploaded .ics calendar or .jsonl event log into events
 # POST /midday                    -> projected end-of-day score + optional re-organization (approvable/exportable)
 # POST /approve | /feedback       -> record the human decision (edited plans recompute the projected impact)

@@ -83,6 +83,45 @@ class TestApi(unittest.TestCase):
         self.assertIn("BEGIN:VCALENDAR", ics.text)
         self.assertIn("BEGIN:VEVENT", ics.text)
 
+    def test_analyze_alarm_minutes_controls_ics_reminder(self) -> None:
+        """The /analyze alarm option is honored at export time."""
+        sample = self.client.get("/sample").json()
+        payload = {"events": sample["events"], "tasks": sample["tasks"]}
+        # Default (field omitted): the server-wide 10-minute lead.
+        pid = self._analyze()["plan_id"]
+        ics = self.client.get(f"/plan/{pid}/export.ics").text
+        self.assertIn("TRIGGER:-PT10M", ics)
+        # Custom lead time.
+        resp = self.client.post("/analyze", json={**payload, "alarm_minutes": 5.0})
+        self.assertEqual(resp.status_code, 200)
+        ics = self.client.get(f"/plan/{resp.json()['plan_id']}/export.ics").text
+        self.assertIn("TRIGGER:-PT5M", ics)
+        # Zero disables the reminder.
+        resp = self.client.post("/analyze", json={**payload, "alarm_minutes": 0.0})
+        self.assertEqual(resp.status_code, 200)
+        ics = self.client.get(f"/plan/{resp.json()['plan_id']}/export.ics").text
+        self.assertNotIn("BEGIN:VALARM", ics)
+
+    def test_analyze_rejects_negative_alarm_minutes(self) -> None:
+        sample = self.client.get("/sample").json()
+        resp = self.client.post(
+            "/analyze",
+            json={"events": sample["events"], "tasks": sample["tasks"], "alarm_minutes": -1.0},
+        )
+        self.assertEqual(resp.status_code, 422)
+
+    def test_midday_export_keeps_default_alarm(self) -> None:
+        """Midday plans are exported with the default reminder, not customized."""
+        sample = self.client.get("/sample").json()
+        resp = self.client.post(
+            "/midday",
+            json={"events": sample["events"], "tasks": sample["tasks"], "elapsed_minutes": 240},
+        )
+        self.assertEqual(resp.status_code, 200)
+        pid = resp.json()["plan_id"]
+        ics = self.client.get(f"/plan/{pid}/export.ics").text
+        self.assertIn("TRIGGER:-PT10M", ics)
+
     def test_export_csv(self) -> None:
         data = self._analyze()
         pid = data["plan_id"]

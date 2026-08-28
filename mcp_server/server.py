@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from loadguard.actions import (  # noqa: E402
     APPROVAL_DECISIONS,
+    FOCUS_ALARM_MINUTES,
     export_ics,
     export_tasks_csv,
     record_approval,
@@ -132,12 +133,21 @@ def approve_plan(events: list[dict], tasks: list[dict], decision: str, feedback:
 
 
 def export_plan_ics(
-    events: list[dict], tasks: list[dict], start_epoch: float | None = None
+    events: list[dict],
+    tasks: list[dict],
+    start_epoch: float | None = None,
+    alarm_minutes: float | None = None,
 ) -> dict:
-    """Render the approved plan's focus/recovery blocks as an .ics calendar."""
+    """Render the approved plan's focus/recovery blocks as an .ics calendar.
+
+    *alarm_minutes* sets the VALARM lead time for focus blocks: omitted uses
+    the FOCUS_ALARM_MINUTES default and 0 exports without reminders.
+    """
     try:
         result = run_workflow(_to_events(events), _to_tasks(tasks), approval="accepted")
-        return {"ics": export_ics(result.plan, _to_tasks(tasks), start_epoch)}
+        # export_ics treats None as "no alarms"; resolve the omitted case here.
+        alarm = FOCUS_ALARM_MINUTES if alarm_minutes is None else alarm_minutes
+        return {"ics": export_ics(result.plan, _to_tasks(tasks), start_epoch, alarm_minutes=alarm)}
     except Exception as exc:
         return {"error": str(exc)}
 
@@ -170,6 +180,21 @@ def self_test() -> None:
     tasks = sample_tasks()
     out = analyze_workload([asdict(e) for e in events], [asdict(t) for t in tasks])
     print(json.dumps(out, indent=2))
+
+    # Export variants: default reminder, custom lead time, no reminder.
+    payloads = [asdict(e) for e in events]
+    task_payloads = [asdict(t) for t in tasks]
+    default_ics = export_plan_ics(payloads, task_payloads, start_epoch=1_700_000_000.0)["ics"]
+    assert "TRIGGER:-PT10M" in default_ics, "default VALARM missing"
+    custom = export_plan_ics(
+        payloads, task_payloads, start_epoch=1_700_000_000.0, alarm_minutes=5.0
+    )["ics"]
+    assert "TRIGGER:-PT5M" in custom, "custom VALARM lead time missing"
+    unalarmed = export_plan_ics(
+        payloads, task_payloads, start_epoch=1_700_000_000.0, alarm_minutes=0.0
+    )["ics"]
+    assert "BEGIN:VALARM" not in unalarmed, "alarm_minutes=0 must disable reminders"
+    print("export_plan_ics alarm variants OK", file=sys.stderr)
 
 
 def main() -> None:

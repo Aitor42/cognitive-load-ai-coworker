@@ -264,6 +264,23 @@ class TestApi(unittest.TestCase):
         tasks_none = api_module._to_tasks([{"id": "2", "title": "T"}])
         self.assertIsNone(tasks_none[0].assignee)
 
+    def test_to_tasks_accepts_iso_8601_deadline(self) -> None:
+        tasks = api_module._to_tasks(
+            [{"id": "1", "title": "T", "deadline": "2026-08-28T17:00:00+00:00"}]
+        )
+        self.assertAlmostEqual(tasks[0].deadline, 1787936400.0)
+        # A trailing 'Z' and epoch numbers are accepted too.
+        tasks_z = api_module._to_tasks(
+            [{"id": "2", "title": "T", "deadline": "2026-08-28T17:00:00Z"}]
+        )
+        self.assertAlmostEqual(tasks_z[0].deadline, 1787936400.0)
+        tasks_epoch = api_module._to_tasks([{"id": "3", "title": "T", "deadline": 5.0}])
+        self.assertEqual(tasks_epoch[0].deadline, 5.0)
+
+    def test_to_tasks_without_deadline(self) -> None:
+        tasks = api_module._to_tasks([{"id": "1", "title": "T"}])
+        self.assertIsNone(tasks[0].deadline)
+
     def test_to_workers_builds_absences(self) -> None:
         workers = api_module._to_workers(
             [{"id": "w1", "name": "Ada", "absences": [{"start": 1.0, "end": 2.0, "kind": "leave"}]}]
@@ -271,6 +288,27 @@ class TestApi(unittest.TestCase):
         self.assertEqual(workers[0].name, "Ada")
         self.assertEqual(workers[0].absences[0].kind, "leave")
         self.assertEqual(workers[0].absences[0].start, 1.0)
+
+    def test_to_workers_accepts_iso_8601_absences(self) -> None:
+        workers = api_module._to_workers(
+            [
+                {
+                    "id": "w1",
+                    "name": "Ada",
+                    "absences": [
+                        {
+                            "start": "2026-09-01T09:00:00+00:00",
+                            "end": "2026-09-05T17:00:00Z",
+                            "kind": "vacation",
+                        }
+                    ],
+                }
+            ]
+        )
+        absence = workers[0].absences[0]
+        self.assertAlmostEqual(absence.start, 1788253200.0)
+        self.assertAlmostEqual(absence.end, 1788627600.0)
+        self.assertEqual(absence.kind, "vacation")
 
     def test_analyze_with_workers_produces_reassignment_alerts(self) -> None:
         sample = self.client.get("/sample").json()

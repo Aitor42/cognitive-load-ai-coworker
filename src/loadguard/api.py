@@ -38,7 +38,7 @@ from .impact import estimate_impact
 from .models import Absence, LoadReport, Plan, PlanItem, Task, Worker
 from .projection import run_midday_review
 from .sample_data import sample_tasks, sample_workers
-from .signals import compute_features, load_events, parse_event
+from .signals import _to_epoch, compute_features, load_events, parse_event
 from .workflow import WorkflowResult, run_workflow
 
 app = FastAPI(
@@ -117,6 +117,11 @@ def _parse_bool(val: Any, default: bool = True) -> bool:
 
 
 def _to_tasks(payload: list[dict[str, Any]]) -> list[Task]:
+    """Build Task objects from API payload dicts.
+
+    Timestamps are accepted as epoch numbers or ISO-8601 strings (the adapter
+    contract documented in ``models.py``).
+    """
     return [
         Task(
             id=str(t.get("id", i)),
@@ -124,7 +129,7 @@ def _to_tasks(payload: list[dict[str, Any]]) -> list[Task]:
             priority=int(t.get("priority", 3)),
             duration_minutes=float(t.get("duration_minutes", 30.0)),
             focus_required=_parse_bool(t.get("focus_required"), True),
-            deadline=float(t["deadline"]) if t.get("deadline") is not None else None,
+            deadline=_to_epoch(t["deadline"]) if t.get("deadline") is not None else None,
             status=str(t.get("status", "todo")),
             assignee=str(t["assignee"]) if t.get("assignee") else None,
         )
@@ -150,15 +155,19 @@ def _capture_signals_module() -> Any:
 
 
 def _to_workers(payload: list[dict[str, Any]]) -> list[Worker]:
-    """Build Worker objects (with nested absences) from API payload dicts."""
+    """Build Worker objects (with nested absences) from API payload dicts.
+
+    Absence bounds are accepted as epoch numbers or ISO-8601 strings (the
+    adapter contract documented in ``models.py``).
+    """
     return [
         Worker(
             id=str(w.get("id", i)),
             name=str(w.get("name", "")),
             absences=[
                 Absence(
-                    start=float(a["start"]),
-                    end=float(a["end"]),
+                    start=_to_epoch(a["start"]),
+                    end=_to_epoch(a["end"]),
                     kind=str(a.get("kind", "leave")),
                     note=str(a.get("note", "")),
                 )

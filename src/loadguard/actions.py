@@ -66,14 +66,27 @@ def _ics_escape(text: str) -> str:
 
 
 def _ics_fold(text: str) -> str:
-    """Fold a content line longer than 75 octets per RFC 5545 (CRLF + space)."""
-    if len(text) <= 75:
+    """Fold a content line longer than 75 octets per RFC 5545 (CRLF + space).
+
+    The limit counts UTF-8 octets, not characters, so non-ASCII titles and
+    rationales stay within the limit a strict parser enforces. A fold is
+    never placed inside a multi-byte sequence, keeping every emitted line
+    independently valid UTF-8.
+    """
+    if len(text.encode("utf-8")) <= 75:
         return text
-    lines = [text[:75]]
-    rest = text[75:]
-    while rest:
-        lines.append(" " + rest[:74])
-        rest = rest[74:]
+    lines: list[str] = []
+    current = ""
+    used = 0
+    for ch in text:
+        width = len(ch.encode("utf-8"))
+        if used + width > 75:
+            lines.append(current)
+            current = " "  # continuation lines start with exactly one space
+            used = 1
+        current += ch
+        used += width
+    lines.append(current)
     return "\r\n".join(lines)
 
 

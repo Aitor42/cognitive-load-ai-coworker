@@ -10,6 +10,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from loadguard.actions import (  # noqa: E402
+    _ics_escape,
+    _ics_fold,
     clear_audit,
     export_ics,
     export_tasks_csv,
@@ -61,8 +63,6 @@ class TestExportIcs(unittest.TestCase):
         self.assertIn("DTSTART:20231114T235820Z", ics)
 
     def test_ics_escape_newlines(self):
-        from loadguard.actions import _ics_escape
-
         self.assertEqual(_ics_escape("Hello\r\nWorld"), "Hello\\nWorld")
         self.assertEqual(_ics_escape("Hello\rWorld"), "Hello\\nWorld")
         self.assertEqual(_ics_escape("Hello,;\\World"), "Hello\\,\\;\\\\World")
@@ -113,6 +113,44 @@ class TestExportIcs(unittest.TestCase):
         ics = export_ics(plan, _tasks(), start_epoch=1_700_000_000.0)
         self.assertIn("\r\n ", ics)
         self.assertTrue(all(len(line) <= 75 for line in ics.split("\r\n") if line))
+
+    def test_ics_fold_counts_octets_not_characters(self):
+        """RFC 5545 limits content lines to 75 *octets*; multibyte titles must
+        be folded by UTF-8 width so every emitted line stays within the limit."""
+        plan = Plan(
+            load_report=LoadReport(score=80.0, level="overload"),
+            plan_id="x",
+            items=[
+                PlanItem(
+                    position=1,
+                    action="focus_block",
+                    title="Reunión de planificación trimestral con el equipo de producto — ñandú 🧠",
+                )
+            ],
+        )
+        ics = export_ics(plan, [], start_epoch=1_700_000_000.0)
+        for line in ics.split("\r\n"):
+            self.assertLessEqual(len(line.encode("utf-8")), 75, line)
+
+    def test_ics_fold_unit_multibyte(self):
+        """_ics_fold never splits a multi-byte sequence and keeps the octet budget."""
+        folded = _ics_fold("SUMMARY:" + "Ñ" * 60)
+        lines = folded.split("\r\n")
+        self.assertEqual("".join(line.lstrip(" ") for line in lines), "SUMMARY:" + "Ñ" * 60)
+        for line in lines:
+            self.assertLessEqual(len(line.encode("utf-8")), 75)
+        # Continuation lines still start with exactly one space.
+        for line in lines[1:]:
+            self.assertTrue(line.startswith(" "))
+
+    def test_ics_escape_roundtrip_non_ascii(self):
+        """Non-ASCII titles survive escape + fold + standard unfold intact."""
+        title = "Reunión de equipo — ñandú 🧠"
+        folded = _ics_fold(f"SUMMARY:{_ics_escape(title)}")
+        for line in folded.split("\r\n"):
+            self.assertLessEqual(len(line.encode("utf-8")), 75)
+        unfolded = folded.replace("\r\n ", "")
+        self.assertEqual(unfolded, f"SUMMARY:{title}")
 
     def test_export_ics_stops_at_end_of_day(self):
         """Blocks starting after the UTC day boundary are not exported."""

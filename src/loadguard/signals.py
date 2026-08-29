@@ -89,9 +89,7 @@ def _window_minutes(events: Iterable[Event]) -> float:
     raw_span = max(stamps) - min(stamps)
     if raw_span <= 86400.0:
         return max(raw_span / 60.0, 60.0)
-    unique_days = {
-        datetime.fromtimestamp(ts, tz=timezone.utc).date() for ts in stamps
-    }
+    unique_days = {datetime.fromtimestamp(ts, tz=timezone.utc).date() for ts in stamps}
     return max(len(unique_days) * 480.0, 60.0)
 
 

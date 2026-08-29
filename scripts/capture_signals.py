@@ -31,42 +31,40 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
-from calendar import monthrange
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from loadguard.models import LEAVE, VACATION, Absence, Event, Worker  # noqa: E402
-
 from loadguard import calendar_parser  # noqa: E402
-from loadguard.calendar_parser import (  # noqa: E402
-    ABSENCE_SUMMARY_KEYWORDS,
-    MAX_RRULE_OCCURRENCES,
-    VACATION_KEYWORDS,
-    _WINDOWS_TZ_MAP,
-    _WEEKDAY_CODES,
-    _absence_end,
-    _absence_kind,
-    _classify_vevents,
-    _event_occurrences,
-    _expand_rrule,
-    _is_absence,
-    _parse_duration,
-    _parse_ics_date,
-    _parse_ics_date_or_datetime,
-    _parse_ics_datetime,
-    _parse_iso,
-    _parse_rrule,
-    _unfold,
-    _vevents_text,
-    parse_absences,
-    parse_calendar_text,
-    parse_ics,
-)
+from loadguard.models import Absence, Event, Worker  # noqa: E402
+
+ISO = "%Y-%m-%dT%H:%M:%SZ"
+
+# Expose calendar_parser constants and helpers for CLI and test compatibility
+ABSENCE_SUMMARY_KEYWORDS = calendar_parser.ABSENCE_SUMMARY_KEYWORDS
+MAX_RRULE_OCCURRENCES = calendar_parser.MAX_RRULE_OCCURRENCES
+VACATION_KEYWORDS = calendar_parser.VACATION_KEYWORDS
+_WINDOWS_TZ_MAP = calendar_parser._WINDOWS_TZ_MAP
+_WEEKDAY_CODES = calendar_parser._WEEKDAY_CODES
+_absence_end = calendar_parser._absence_end
+_absence_kind = calendar_parser._absence_kind
+_classify_vevents = calendar_parser._classify_vevents
+_event_occurrences = calendar_parser._event_occurrences
+_expand_rrule = calendar_parser._expand_rrule
+_is_absence = calendar_parser._is_absence
+_parse_duration = calendar_parser._parse_duration
+_parse_ics_date = calendar_parser._parse_ics_date
+_parse_ics_date_or_datetime = calendar_parser._parse_ics_date_or_datetime
+_parse_ics_datetime = calendar_parser._parse_ics_datetime
+_parse_iso = calendar_parser._parse_iso
+_parse_rrule = calendar_parser._parse_rrule
+_unfold = calendar_parser._unfold
+_vevents_text = calendar_parser._vevents_text
+parse_absences = calendar_parser.parse_absences
+parse_calendar_text = calendar_parser.parse_calendar_text
+parse_ics = calendar_parser.parse_ics
 
 
 def _vevents(path: Path) -> list[tuple[dict[str, str], dict[str, str | None], bool]]:

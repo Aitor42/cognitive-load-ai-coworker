@@ -10,10 +10,8 @@ privacy endpoint describing exactly what is captured.
 
 from __future__ import annotations
 
-import importlib.util
 import json
 from dataclasses import asdict
-from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
 
@@ -358,7 +356,9 @@ def approve(req: ApproveRequest) -> dict[str, Any]:
                 "position": i + 1,
                 "action": item["action"],
                 "task_id": item.get("task_id"),
-                "title": item.get("title") or task_title_map.get(item.get("task_id")) or item["action"],
+                "title": item.get("title")
+                or task_title_map.get(item.get("task_id"))
+                or item["action"],
                 "rationale": item.get("rationale", ""),
             }
             for i, item in enumerate(req.items)

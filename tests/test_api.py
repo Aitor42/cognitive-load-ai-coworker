@@ -201,7 +201,9 @@ class TestApi(unittest.TestCase):
         data = self._analyze()
         pid = data["plan_id"]
         # Rename the task title during editing
-        items = [{"action": "do", "task_id": "t1", "title": "Write incident postmortem - Urgent Draft"}]
+        items = [
+            {"action": "do", "task_id": "t1", "title": "Write incident postmortem - Urgent Draft"}
+        ]
         resp = self.client.post(
             "/approve",
             json={"plan_id": pid, "decision": "edited", "items": items},
@@ -588,6 +590,23 @@ class TestApi(unittest.TestCase):
         self.assertTrue(api_module.PLANS_PATH.exists())
         loaded = api_module._load_persisted_plans()
         self.assertIn(pid, loaded)
+
+    def test_load_persisted_plans_corrupt_fallback(self) -> None:
+        with tempfile.NamedTemporaryFile("w", delete=False) as f:
+            f.write("not-valid-json")
+            f_path = Path(f.name)
+        try:
+            with mock.patch("loadguard.api.PLANS_PATH", f_path):
+                self.assertEqual(api_module._load_persisted_plans(), {})
+        finally:
+            f_path.unlink()
+        with mock.patch("loadguard.api.PLANS_PATH", Path("non_existent_file_xyz.json")):
+            self.assertEqual(api_module._load_persisted_plans(), {})
+
+    def test_persist_plans_exception_handling(self) -> None:
+        with mock.patch("loadguard.api.json.dumps", side_effect=TypeError("disk error")):
+            # Should catch and not raise
+            api_module._persist_plans()
 
     def test_pilot_endpoint_reports_projection_without_outcome(self) -> None:
         resp = self.client.get("/pilot")

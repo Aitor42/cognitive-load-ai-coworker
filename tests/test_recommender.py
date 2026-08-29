@@ -65,7 +65,13 @@ class TestBuildPlan(unittest.TestCase):
         """In overload, an urgent longer task is prioritized before a non-urgent short task."""
         tasks = [
             Task(id="short_no_deadline", title="Short", priority=5, duration_minutes=15.0),
-            Task(id="long_imminent", title="Urgent", priority=5, duration_minutes=60.0, deadline=500.0),
+            Task(
+                id="long_imminent",
+                title="Urgent",
+                priority=5,
+                duration_minutes=60.0,
+                deadline=500.0,
+            ),
         ]
         plan = build_plan(tasks, _overload_report())
         do_items = [i for i in plan.items if i.action == "do"]

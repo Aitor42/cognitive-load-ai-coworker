@@ -147,7 +147,12 @@ def export_ics(
     before the block starts (pass ``None`` or ``0`` to export without alarms).
     """
     if start_epoch is None:
-        start_epoch = float(math.ceil(time.time() / 900.0) * 900)
+        if existing_events:
+            stamps = [e.timestamp for e in existing_events if getattr(e, "timestamp", None) is not None]
+            if stamps:
+                start_epoch = float(math.ceil(min(stamps) / 900.0) * 900)
+        if start_epoch is None:
+            start_epoch = float(math.ceil(time.time() / 900.0) * 900)
     if horizon_epoch is None:
         horizon_epoch = _day_end_epoch(start_epoch)
     cursor = start_epoch

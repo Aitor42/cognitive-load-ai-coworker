@@ -409,8 +409,14 @@ def export_plan_ics(plan_id: str) -> Response:
         raise HTTPException(status_code=404, detail="unknown plan_id")
     plan = _plan_from_payload(stored["payload"])
     tasks = _to_tasks(stored["tasks"])
+    existing_events = [parse_event(e) for e in stored.get("events", [])]
     return Response(
-        content=export_ics(plan, tasks, alarm_minutes=stored["alarm_minutes"]),
+        content=export_ics(
+            plan,
+            tasks,
+            existing_events=existing_events,
+            alarm_minutes=stored["alarm_minutes"],
+        ),
         media_type="text/calendar",
         headers={"Content-Disposition": f'attachment; filename="loadguard-{plan_id}.ics"'},
     )

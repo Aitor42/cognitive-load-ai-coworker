@@ -33,7 +33,7 @@ from loadguard.benchmark import run_benchmark, run_pilot_evaluation  # noqa: E40
 from loadguard.models import Event, Task  # noqa: E402
 from loadguard.sample_data import sample_tasks  # noqa: E402
 from loadguard.scoring import score  # noqa: E402
-from loadguard.signals import compute_features, load_events, parse_event  # noqa: E402
+from loadguard.signals import _to_epoch, compute_features, load_events, parse_event  # noqa: E402
 from loadguard.workflow import run_workflow  # noqa: E402
 
 
@@ -63,7 +63,7 @@ def _to_tasks(payload: list[dict[str, Any]]) -> list[Task]:
             priority=int(t.get("priority", 3)),
             duration_minutes=float(t.get("duration_minutes", 30.0)),
             focus_required=_parse_bool(t.get("focus_required"), True),
-            deadline=float(t["deadline"]) if t.get("deadline") is not None else None,
+            deadline=_to_epoch(t["deadline"]) if t.get("deadline") is not None else None,
             status=str(t.get("status", "todo")),
         )
         for i, t in enumerate(payload)
@@ -144,10 +144,20 @@ def export_plan_ics(
     the FOCUS_ALARM_MINUTES default and 0 exports without reminders.
     """
     try:
-        result = run_workflow(_to_events(events), _to_tasks(tasks), approval="accepted")
+        parsed_events = _to_events(events)
+        parsed_tasks = _to_tasks(tasks)
+        result = run_workflow(parsed_events, parsed_tasks, approval="accepted")
         # export_ics treats None as "no alarms"; resolve the omitted case here.
         alarm = FOCUS_ALARM_MINUTES if alarm_minutes is None else alarm_minutes
-        return {"ics": export_ics(result.plan, _to_tasks(tasks), start_epoch, alarm_minutes=alarm)}
+        return {
+            "ics": export_ics(
+                result.plan,
+                parsed_tasks,
+                start_epoch,
+                existing_events=parsed_events,
+                alarm_minutes=alarm,
+            )
+        }
     except Exception as exc:
         return {"error": str(exc)}
 

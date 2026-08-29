@@ -47,14 +47,14 @@ def _available_workers(
     exclude_id: str | None,
     now: float | None,
 ) -> list[str]:
-    """Return IDs of workers not currently absent, excluding *exclude_id*."""
+    """Return names (or IDs) of workers not currently absent, excluding *exclude_id*."""
     result: list[str] = []
     for w in workers:
-        if w.id == exclude_id:
+        if w.id == exclude_id or (w.name and w.name == exclude_id):
             continue
         if now is not None and is_absent(w.absences, now):
             continue
-        result.append(w.id)
+        result.append(w.name if w.name else w.id)
     return result
 
 

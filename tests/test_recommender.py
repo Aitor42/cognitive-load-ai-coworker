@@ -150,6 +150,17 @@ class TestBuildPlan(unittest.TestCase):
         self.assertEqual(len(delegated), 1)
         self.assertIn("bob", delegated[0].rationale)
 
+    def test_delegation_prefers_worker_name(self) -> None:
+        """When worker has a name, it is preferred over ID in delegation rationale."""
+        from loadguard.models import Worker
+
+        workers = [Worker(id="w1", name="Ada Lovelace"), Worker(id="w2", name="Grace Hopper")]
+        tasks = [Task(id="a", title="Admin", priority=1, assignee="w1")]
+        plan = build_plan(tasks, _overload_report(), workers=workers, now=0.0)
+        delegated = [i for i in plan.items if i.action == "delegate"]
+        self.assertEqual(len(delegated), 1)
+        self.assertIn("Grace Hopper", delegated[0].rationale)
+
     def test_delegation_warns_when_no_workers_available(self) -> None:
         """Warn in rationale when all teammates are absent."""
         from loadguard.models import Absence, Worker

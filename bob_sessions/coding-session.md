@@ -13,6 +13,6 @@
 - Generated the unit tests in `tests/test_scoring.py` and helped fix edge cases (e.g., the
   inverted focus-term baseline on empty input).
 - Produced the self-contained HTML dashboard template and the Mermaid architecture diagram.
-- Implemented the MCP server (`mcp_server/server.py`) so IBM Bob can drive LoadGuard's tools
-  (`compute_load_score`, `analyze_workload`, `benchmark_workload`) during development.
+- Implemented the MCP server (`mcp_server/server.py`) so IBM Bob can drive LoadGuard's analysis,
+  proposal, approval, export, and evaluation tools during development.
 - Implemented the benchmark module and the real-signal capture script (ICS calendar + notification log).

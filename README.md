@@ -5,90 +5,58 @@
 
 > **An AI co-worker whose job is to protect you from the other AI co-workers.**
 >
-> Built for the **IBM AI Builders Challenge 2026 — Wildcard: "Build Intelligent Systems for the Future of Work"**.
+> Built for the **IBM AI Builders Challenge 2026 — Wildcard: “Build Intelligent Systems for the Future of Work”**.
 
-LoadGuard senses when a knowledge worker is heading toward **"AI brain fry"** — the cognitive
-overload caused by too many AI-driven interruptions — and proactively **resequences the workday,
-delegates low-priority tasks, and inserts recovery blocks** before the human crashes.
+LoadGuard detects behavioral signals associated with excessive interruptions and helps reshape the workday: it proposes focus and recovery blocks, delegates eligible low-priority work, and makes the expected impact explicit. The user always reviews and approves changes before anything is applied.
 
----
-
-## 🎯 Selected Challenge Theme
-
-**Wildcard Challenge — Build Intelligent Systems for the Future of Work.**
-
-AI is evolving from a productivity tool into a collaborator. LoadGuard answers the inverse and
-overlooked half of that promise: **if AI becomes a co-worker, it must also learn to protect the
-human's attention budget** — not just consume it. It maps directly onto three example solution
-areas from the brief: **AI co-workers**, **decision intelligence platforms**, and **operations &
-productivity solutions**.
+> **Prototype notice:** the Cognitive Load Score is an explainable behavioral proxy, not a medical or physiological measurement. LoadGuard does not diagnose stress, burnout, or any health condition.
 
 ---
 
-## ✅ Submission Requirements Checklist
+## Contents
 
-| Official requirement | Where LoadGuard satisfies it |
-| --- | --- |
-| Working prototype using IBM Bob | `src/`, `demo/`, `app.py` — Bob-built (see `.bob/` + `bob_sessions/`) |
-| Required IBM SkillsBuild learning activity | In progress on skillsbuild.org — completion certificate attached at submission time |
-| Public GitHub repository | This repo (made public at submission time) |
-| README: problem / solution / AI approach / theme / Bob usage |
-| Project page + public demo video (≤3 min) | Submitted on the challenge platform |
+- [Why LoadGuard](#-why-loadguard)
+- [What it does](#-what-it-does)
+- [AI approach and architecture](#-ai-approach-and-architecture)
+- [IBM technology](#️-ibm-technology)
+- [Quick start](#-quick-start)
+- [Optional API and dashboard](#-optional-api-and-dashboard)
+- [Optional Granite models](#-optional-granite-models)
+- [Real signals and daily scheduling](#-real-signals-and-daily-scheduling)
+- [MCP server for IBM Bob](#-mcp-server-for-ibm-bob)
+- [Data, privacy, and limitations](#-data-privacy-and-limitations)
+- [Evaluation](#-evaluation)
+- [Project structure](#️-project-structure)
+- [Development](#-development)
+- [IBM Bob usage](#-ibm-bob-usage)
+- [Team and license](#-team-and-license)
 
-## ❗ Problem Statement
+## 🎯 Why LoadGuard
 
-The 2026 AI-first workplace has a paradox: more "productivity" AI produces *less* productive,
-*more* exhausted humans.
+AI assistants can increase output while also increasing notifications, context switches, and micro-decisions. Existing productivity tools generally optimize throughput; LoadGuard treats human attention as a finite resource.
 
-- Research at UC Irvine (Gloria Mark et al., "The Cost of Interrupted Work") found it takes an
-  average of **~23 minutes** to fully refocus after an interruption.
-- The American Psychological Association estimates that **task switching can consume up to 40% of
-  productive time**.
-- Each new AI assistant adds notifications, context switches, and micro-decisions — multiplying
-  these interruption costs at scale.
-- Burnout is recognized by the WHO (ICD-11) as an occupational phenomenon driven by chronic
-  workplace stress.
+The system answers: **when should AI slow down so the human can keep up?**
 
-Existing tools optimize **output**. Almost none protect the human's **attention budget**. The
-result is a measurable, real-world problem: reduced focus, higher error rates, and burnout.
+The challenge alignment is the **Wildcard — Future of Work**, particularly its AI co-worker, decision intelligence, and operations/productivity themes. Background sources and citations are available in [`docs/references.md`](docs/references.md).
 
-**LoadGuard answers one question:** *when does the AI need to slow down, so the human can keep up?*
+## 💡 What it does
 
----
+LoadGuard follows this reviewable loop:
 
-## 💡 Solution Description
+1. **Sense** — reads privacy-preserving events such as meetings, notifications, context switches, and focus blocks.
+2. **Diagnose** — calculates an explainable score from 0 to 100, including level, drivers, trend, baseline, and confidence.
+3. **Propose** — the deterministic planner and optional Granite Decision Agent suggest task ordering, eligible delegation, and focus/recovery blocks.
+4. **Validate** — a deterministic gate and optional Granite Guardian reject unsafe, invented, critical, or out-of-scope changes.
+5. **Approve** — the human accepts, edits, or rejects the plan.
+6. **Act and measure** — accepted plans can export an `.ics` calendar and task CSV; impact is labelled projected unless real outcome signals are supplied.
 
-LoadGuard is a cognitive-load-aware AI co-worker that closes the loop — **sense → diagnose →
-Granite proposes → LoadGuard validates → human approves → LoadGuard acts → the result is
-measured**:
-
-1. **Sense** — ingests lightweight, privacy-preserving signals (context switches, meeting density,
-   notification rate, focus blocks). Only counts and ratios are captured — never screen content,
-   keystrokes, or message bodies.
-2. **Diagnose** — computes an **explainable Cognitive Load Score (0–100)** from transparent,
-   weighted behavioral proxies, with a low / moderate / high / overload level, plus a personal
-   baseline, trend, and confidence.
-3. **Granite proposes** — the Granite Decision Agent proposes which task to prioritize, which to
-   delegate, and when to insert focus/recovery blocks. A **deterministic gate** rejects anything
-   unsafe (invented data, delegating critical work, invalid actions).
-4. **Validate** — **Granite Guardian** (with a deterministic fallback) checks the plan and
-   narrative for respect, absence of medical diagnosis, sensitive data, and scope.
-5. **Approve & act** — the human accepts, edits, or rejects the plan. On acceptance LoadGuard
-   exports the protected blocks to a real **`.ics` calendar** and the resequenced task list.
-6. **Measure** — projected before/after score, plus **observed** metrics when outcome signals are
-   recorded.
-
-LoadGuard is **AI as a partner, not a replacement**: the human always decides, every score is
-traceable to a named signal, and the system never diagnoses stress, burnout, or any medical
-condition.
+The default mode is local and deterministic. No API key is required for the CLI demo or core library.
 
 ---
 
-## 🤖 AI Approach & Architecture
+## 🤖 AI approach and architecture
 
-LoadGuard uses a **hybrid, multi-agent pipeline**: a deterministic, explainable scoring layer acts
-as the *guardrail*, while the LLM contributes *planning and natural-language reasoning*. This keeps
-recommendations grounded, reproducible, and safe even when the model is swapped out.
+LoadGuard uses a hybrid multi-agent pipeline: deterministic code provides explainable scoring and safety boundaries, while Granite contributes structured planning and natural-language explanation when configured.
 
 <!-- Architecture diagram is generated from docs/architecture.mmd — keep both in sync. -->
 ```mermaid
@@ -144,285 +112,315 @@ flowchart TB
     LG -.-> Agents
 ```
 
-Each agent is a small, independently testable unit with a single responsibility:
-
-| Agent | Responsibility | Deterministic / LLM |
+| Component | Responsibility | Default implementation |
 | --- | --- | --- |
-| **SignalAnalyst** | Aggregate raw events into normalized features | Deterministic |
-| **LoadDiagnostician** | Weighted Cognitive Load Score + level + drivers | Deterministic |
-| **WorkloadPlanner** | Deterministic safety-baseline plan | Deterministic |
-| **Granite Decision** | Propose what to prioritize / delegate / block | LLM (Granite) + deterministic gate |
-| **Narrator** | Plain-language explanation of the plan | LLM (Granite) |
-| **Guardian** | Safety check of plan + narrative | Deterministic + Granite Guardian |
-| **Impact Estimator** | Project the load score *after* following the plan | Deterministic |
-| **Pilot Evaluation** | Baseline / projected / observed measurement | Deterministic |
+| Signal Analyst | Aggregate raw events into normalized features | Deterministic |
+| Load Diagnostician | Weighted score, level, factors, and explanation | Deterministic |
+| Workload Planner | Safe baseline plan | Deterministic |
+| Granite Decision Agent | Structured proposal for prioritization and scheduling | Optional Granite + deterministic gate |
+| Narrator | Plain-language explanation | Optional Granite / heuristic fallback |
+| Guardian | Safety and scope checks | Deterministic + optional Granite Guardian |
+| Impact Estimator | Projected before/after score | Deterministic |
+| Pilot Evaluation | Baseline, projected, and observed metrics | Deterministic |
 
-The loop is wired as a real **LangGraph `StateGraph`** (`langgraph_flow.py`) with an explicit
-human-approval gate; the same node functions run sequentially when LangGraph is not
-installed, preserving the zero-dependency guarantee.
+Detailed design and scoring rationale: [`docs/architecture.md`](docs/architecture.md) · [`docs/architecture.mmd`](docs/architecture.mmd).
 
-Full details: [`docs/architecture.md`](docs/architecture.md) · [`docs/architecture.mmd`](docs/architecture.mmd)
-
----
-
-## ☁️ IBM Technology Stack
+## ☁️ IBM technology
 
 | Technology | Role |
 | --- | --- |
-| **IBM Bob** | Primary development tool (planning, code, tests, debugging) — see below |
-| **IBM Granite 3 (8B Instruct)** | Decision + narrator agents: proposes the structured plan and writes the explanation (`ibm/granite-3-8b-instruct` via watsonx) |
-| **IBM Granite (local)** | Same roles, running locally via Ollama — no cloud keys (`granite3.1-dense:8b`) |
-| **IBM Granite Guardian 3** | Implemented safety guardrail (`guardian.py`): validates respect, no medical diagnosis, no sensitive data, in-scope (`ibm/granite-guardian-3-8b`; deterministic fallback without a model) |
-| **watsonx.ai** | Cloud model runtime (LangChain `ChatWatsonx`) |
-| **LangChain / LangGraph** | Real orchestration via a `StateGraph` (`langgraph_flow.py`), with a sequential fallback when not installed |
+| **IBM Bob** | Planning, implementation, testing, debugging, and review |
+| **IBM Granite 3** | Optional decision and narrator model via watsonx or Ollama |
+| **IBM Granite Guardian 3** | Optional model-based safety check; deterministic guard remains enabled |
+| **watsonx.ai** | Cloud runtime through `langchain-ibm` |
+| **LangChain / LangGraph** | Optional model integration and `StateGraph` orchestration |
+
+## ✨ Main capabilities
+
+- Explainable Cognitive Load Score from 0–100 with named factors.
+- Synthetic JSONL demo and adapters for calendar/notification signals.
+- Human approval flow: accept, edit, or reject.
+- `.ics` export with optional `VALARM` reminders and task CSV export.
+- Personal baseline, trend, confidence, local history, and audit trail.
+- Team absences and deadline-aware reassignment alerts.
+- Midday end-of-day projection and re-organization.
+- Self-contained HTML report.
+- REST API and dashboard, optional LangGraph orchestration, and IBM Bob MCP tools.
+- Deterministic fallback with no API keys.
 
 ---
 
-## 🧑‍💻 How IBM Bob Was Used
+## 🚀 Quick start
 
-IBM Bob acted as our primary AI pair-programming partner across the full SDLC:
+### Requirements
 
-- **Planning & design** — Bob helped draft the solution design, module boundaries, and the
-  multi-agent pipeline (Specification-Driven Development).
-- **Implementation** — Bob generated and iterated on `signals.py`, `scoring.py`, `recommender.py`,
-  `agents.py`, and the FastAPI layer.
-- **Testing** — Bob generated unit tests for the scoring engine and edge cases.
-- **Debugging & review** — Bob was used to troubleshoot and review changes during development.
+- Python **3.11 or newer**.
+- `pip`.
+- Optional: Docker, Ollama, or IBM watsonx credentials depending on the integration you want.
 
-We also packaged the workflow as a **custom Bob mode** so the team could drive LoadGuard
-development through consistent, repeatable prompts:
+### Run the zero-dependency demo
 
-- [`.bob/custom_modes.yaml`](.bob/custom_modes.yaml) — the "Cognitive Load Engineer" mode.
-- [`bob_sessions/`](bob_sessions/) — session exports documenting Bob's role in architecture and
-  implementation.
+From the repository root:
+
+```bash
+python demo/demo.py
+```
+
+The command reads `demo/sample_events.jsonl`, prints the score and a pending plan, and does not need third-party packages or API keys. To approve and export the plan:
+
+```bash
+python demo/demo.py --accept --out outputs
+# outputs/loadguard-<plan-id>.ics
+# outputs/loadguard-<plan-id>.csv
+```
+
+Other useful modes:
+
+```bash
+python demo/demo.py --history history.jsonl
+python demo/demo.py --html report.html
+python demo/demo.py path/to/events.jsonl --html report.html
+```
+
+### Install development dependencies
+
+The project uses `pyproject.toml` as the dependency source of truth. Install the complete local development setup with:
+
+```bash
+pip install ".[api,llm,bob,dev]"
+```
+
+The optional groups are:
+
+- `api`: FastAPI, Uvicorn, Pydantic, and HTTPX.
+- `llm`: LangChain, `langchain-ibm`, and LangGraph.
+- `bob`: MCP support for IBM Bob.
+- `dev`: coverage, Ruff, and mypy.
 
 ---
 
-## ✨ Core Features
+## 🌐 Optional API and dashboard
 
-- **Signal ingestion** — JSONL event stream plus adapter-ready interfaces for calendar and
-  notification sources.
-- **Real-signal capture** — `scripts/capture_signals.py` turns a real calendar (ICS) + notification
-  log into events, so the project runs on real data, not just the synthetic sample. It also
-extracts out-of-office / vacation events as absences (never the reason).
-- **Explainable Cognitive Load Score** — 0–100 with per-factor contributions, so users can see
-  *why* a recommendation was made.
-- **Granite Decision Agent** — Granite proposes the plan structure; a deterministic gate rejects
-  unsafe proposals (invented data, critical-task delegation).
-- **Granite Guardian safety gate** — validates respect, no medical diagnosis, no sensitive data,
-  in-scope; deterministic fallback always on.
-- **Human approval & action** — accept / edit / reject, then export protected blocks to **`.ics`**
-  (focus blocks carry a `VALARM` reminder that fires before they start) and the resequenced
-  tasks to **CSV**.
-- **Personalized baseline & trend** — score vs. your own history, with trend direction and
-  confidence.
-- **Team availability & absences** — track when a worker is on vacation or leave (only the fact
-  and type are stored, never the reason) and surface it in the dashboard.
-- **Deadline-aware reassignment alerts** — when a task's assignee is away before its deadline,
-  LoadGuard flags it and suggests available teammates to take it over.
-- **Midday re-organization** — project the end-of-day load from the morning so far and re-plan
-  when the projected load is high/overload.
-- **Daily cycle scheduler** — a cron-friendly morning + midday entry point
-  (`scripts/schedule.py`) built on the same deterministic functions as the interactive loop.
-- **At-a-glance dashboard** — a one-line summary with expandable details, so the report reads
-  quickly without hiding the reasoning.
-- **Purpose-first dashboard** — the web UI walks the sense → diagnose → propose → validate →
-  decide → act/measure loop with the actual state of the run, shows what Granite proposed
-  before the deterministic gate, and lists the documented assumptions behind every projected
-  score reduction.
-- **Bring your own signals** — upload a real `.ics` calendar or `.jsonl` event log straight
-  from the dashboard (`POST /ingest`), no terminal required.
-- **Measurable impact, honestly labelled** — *projected* before/after score, plus *observed*
-  metrics when outcome signals are supplied (`demo/benchmark.py --pilot` and the dashboard's
-  pilot evaluation section; observed is never fabricated).
-- **Real LangGraph orchestration** — `StateGraph` with an explicit human-approval gate.
-- **IBM Bob MCP server** — `mcp_server/` exposes the pipeline (propose, approve, export, evaluate)
-  as MCP tools so IBM Bob can drive it.
-- **Local-first & privacy-preserving** — signals are processed on-device; only derived aggregates
-  and task titles reach the LLM (never screen content, keystrokes, or message bodies). Consent,
-  retention, and delete-your-history controls are surfaced in the dashboard.
-- **Deterministic fallback** — the full pipeline runs with zero API keys, so judges can reproduce
-  it instantly.
-- **Self-contained HTML dashboard** — `demo/demo.py --html report.html` renders a shareable report.
-- **Docker + CI** — single-command deployment and GitHub Actions (unittest + ruff + coverage + mypy).
-
----
-
-## 🚀 Getting Started
-
-### 1. Quick demo (no dependencies, no API keys)
+Install the API layer and start the local server:
 
 ```bash
-python demo/demo.py                 # print the load report + plan (pending approval)
-python demo/demo.py --accept        # approve the plan and export the .ics + task CSV
-python demo/demo.py --history history.jsonl   # compare vs your personal baseline
-python demo/demo.py --html report.html   # generate a self-contained HTML dashboard
+pip install ".[api]"
+HOST=127.0.0.1 python app.py
 ```
 
-### 2. Run the tests
+Open <http://127.0.0.1:8000/> for the dashboard. The API has no authentication and includes delete endpoints, so keep it on loopback unless you explicitly secure it. Docker uses `0.0.0.0` inside the container.
 
-```bash
-pip install ".[dev]"    # coverage + ruff + mypy (dev tooling)
-python -m unittest discover -s tests
-coverage run --branch --source=src/loadguard -m unittest discover -s tests && coverage report
-mypy src               # type check
-ruff check src tests demo scripts app.py mcp_server
-```
+Useful endpoints:
 
-### 2.1 Benchmark (objective metrics)
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/` | Interactive dashboard |
+| `GET` | `/health` | Health check |
+| `GET` | `/sample` | Sample events, tasks, and workers |
+| `POST` | `/analyze` | Analyze events and create a pending plan |
+| `POST` | `/ingest` | Parse uploaded ICS or JSONL text |
+| `POST` | `/midday` | Project the end of day and optionally re-plan |
+| `POST` | `/approve` | Accept, edit, or reject a plan |
+| `POST` | `/feedback` | Record feedback about a plan |
+| `GET` | `/plan/{id}/export.ics` | Download calendar export |
+| `GET` | `/plan/{id}/export.csv` | Download task export |
+| `GET/POST/DELETE` | `/history` | Manage personal score history |
+| `GET/DELETE` | `/audit` | Read or delete local decision audit records |
+| `GET/POST` | `/pilot` | Run pilot evaluation |
+| `GET` | `/privacy` | Show captured and never-captured data |
 
-```bash
-python demo/benchmark.py [path/to/events.jsonl]
+Interactive API documentation is available at <http://127.0.0.1:8000/docs>.
 
-# Three-phase pilot evaluation (baseline / projected / observed).
-# Observed metrics are only reported when outcome signals are supplied.
-python demo/benchmark.py --pilot events.jsonl --outcome outcome.jsonl
-```
-
-### 2.2 Capture real signals (calendar + notifications)
-
-```bash
-python scripts/capture_signals.py \
-    --calendar calendar.ics \
-    --notifications notifications.log \
-    --out signals.jsonl
-python demo/benchmark.py signals.jsonl
-```
-
-Out-of-office / vacation events in the calendar are captured separately (only
-the fact and type — never the summary text, which could be a medical reason),
-and can be exported as a worker record ready for `POST /analyze`:
-
-```bash
-python scripts/capture_signals.py \
-    --calendar calendar.ics \
-    --absences-out absences.jsonl \
-    --workers-out workers.jsonl --worker-id me --worker-name Ada
-```
-
-### 2.3 IBM Bob MCP server
-
-```bash
-pip install mcp
-python mcp_server/server.py --self-test
-```
-
-### 3. Run the REST API + dashboard (optional)
-
-```bash
-pip install -r requirements.txt
-python app.py
-# GET  /                          -> interactive dashboard (loop + accept/edit/reject + timeline + privacy + pilot)
-# POST /analyze                   -> {"events": [...], "tasks": [...], "workers": [...]} + proposal + guardian + trend + reassignment alerts
-#                                    (optional "alarm_minutes" customizes the VALARM lead time of the exported .ics)
-# POST /ingest                    -> parse uploaded .ics calendar or .jsonl event log into events
-# POST /midday                    -> projected end-of-day score + optional re-organization (approvable/exportable)
-# POST /approve | /feedback       -> record the human decision (edited plans recompute the projected impact)
-# GET|POST /pilot                 -> baseline vs. projected vs. observed pilot evaluation (observed only with real outcome signals)
-# GET  /plan/{id}/export.ics      -> protected-blocks calendar
-# GET  /plan/{id}/export.csv      -> resequenced task list
-# GET|POST|DELETE /history        -> personal baseline (deletable)
-# GET  /audit | DELETE /audit     -> local audit trail of human decisions
-# GET  /privacy                   -> exactly what is / isn't captured
-# GET  /health
-```
-
-### 4. Docker
+### Docker
 
 ```bash
 docker build -t loadguard .
-docker run -p 8000:8000 loadguard
+docker run --rm -p 8000:8000 loadguard
 ```
 
-### 5. Enable the IBM Granite runtime (optional)
+Then visit <http://127.0.0.1:8000/>. The container includes the API, LLM, and MCP optional dependencies.
 
-The decision agent, narrator, and guardian can run two ways (the deterministic engine is the
-always-available fallback):
+---
 
-**Local (no cloud keys)** — IBM Granite via Ollama:
+## 🧠 Optional Granite models
+
+By default `LLM_PROVIDER=heuristic`; the deterministic engine is always available. To configure a provider:
 
 ```bash
+cp .env.example .env
+```
+
+The application reads configuration from process environment variables. Copy `.env.example` as a reference, then export the variables in your shell or load them with your preferred dotenv process.
+
+### Local Granite with Ollama
+
+Start Ollama, install the model, and select the provider:
+
+```bash
+ollama serve
 ollama pull granite3.1-dense:8b
-cp .env.example .env   # set LLM_PROVIDER=ollama
+export LLM_PROVIDER=ollama
+export OLLAMA_URL=http://localhost:11434
+export OLLAMA_MODEL=granite3.1-dense:8b
 ```
 
-**Cloud** — IBM Granite via watsonx:
+### Granite through watsonx
+
+Set the provider and required credentials:
 
 ```bash
-cp .env.example .env   # set LLM_PROVIDER=watsonx + WATSONX_API_KEY / WATSONX_PROJECT_ID
+export LLM_PROVIDER=watsonx
+export WATSONX_API_KEY=your-api-key
+export WATSONX_PROJECT_ID=your-project-id
+export WATSONX_URL=https://us-south.ml.cloud.ibm.com
+export WATSONX_MODEL_ID=ibm/granite-3-8b-instruct
 ```
 
-Without either, the pipeline uses the deterministic engine (still fully functional).
+`WATSONX_GUARDIAN_MODEL_ID` and `OLLAMA_GUARDIAN_MODEL` can select separate Guardian models. Never commit `.env` or API keys.
+
+---
+
+## 📅 Real signals and daily scheduling
+
+Capture events from an ICS calendar and a notification log:
+
+```bash
+python scripts/capture_signals.py \
+  --calendar calendar.ics \
+  --notifications notifications.log \
+  --out signals.jsonl
+python demo/benchmark.py signals.jsonl
+```
+
+Absence records can be exported without retaining event summaries or personal reasons:
+
+```bash
+python scripts/capture_signals.py \
+  --calendar calendar.ics \
+  --absences-out absences.jsonl \
+  --workers-out workers.jsonl \
+  --worker-id me --worker-name Ada
+```
+
+Run the morning + midday cycle:
+
+```bash
+python scripts/schedule.py
+python scripts/schedule.py --events signals.jsonl --elapsed-minutes 240 --total-minutes 480
+```
+
+The scheduler is cron-friendly, but the underlying functions are pure and can also be called from another scheduler.
+
+---
+
+## 🔌 MCP server for IBM Bob
+
+The MCP server exposes analysis, proposal, approval, export, and evaluation tools.
+
+```bash
+pip install ".[bob]"
+python mcp_server/server.py --self-test
+```
+
+To register it with IBM Bob, see [`mcp_server/README.md`](mcp_server/README.md) and [`.bob/mcp.json`](.bob/mcp.json). The server uses local data and should only be exposed to trusted clients.
 
 ---
 
 ## 📊 Evaluation
 
-The demo computes a **before/after Cognitive Load Score** and clearly distinguishes the two kinds
-of impact:
+LoadGuard distinguishes two kinds of impact:
 
-- **Projected impact** (`Impact Estimator`) — what the plan is *expected* to achieve, under
-  documented assumptions (see [`docs/architecture.md`](docs/architecture.md#impact-estimator)).
-- **Observed impact** (`demo/benchmark.py --pilot`) — *measured* reductions (interruptions during
-  focus blocks, context switches, focus minutes gained, load delta) once outcome signals are
-  recorded after applying the plan.
+- **Projected:** calculated by `src/loadguard/impact.py` from documented assumptions about batching, focus blocks, breaks, and delegation.
+- **Observed:** calculated by `demo/benchmark.py --pilot ... --outcome ...` or `POST /pilot` only when post-plan outcome events are provided.
 
-> The bundled `demo/sample_events.jsonl` is a **synthetic, reproducible** dataset used for a
-> deterministic demo. Real signals can be captured with `scripts/capture_signals.py` from a
-> calendar + notification log; without observed outcome signals the pilot is honestly labelled as
-> a projection, never as real-world evidence.
+Run the benchmark:
+
+```bash
+python demo/benchmark.py
+python demo/benchmark.py path/to/events.jsonl
+python demo/benchmark.py --pilot events.jsonl --outcome outcome.jsonl
+```
+
+The bundled sample data is synthetic and reproducible. It demonstrates the pipeline; it is not evidence of real-world effectiveness.
+
+## 🔒 Data, privacy, and limitations
+
+LoadGuard is local-first. It is designed to capture counts, durations, timestamps, and opaque/source labels—not screen content, keystrokes, message bodies, audio/video, physiological data, or health data. Absence reasons are not retained.
+
+When a Granite provider is enabled, only the derived aggregates and the minimum task information required for planning are sent to that model runtime. Review your provider’s data-handling terms before using real workplace data.
+
+The score has important limits:
+
+- It is a transparent behavioral proxy, not a diagnosis or clinical measurement.
+- Thresholds and weights are prototype assumptions and may not generalize across people or teams.
+- A projected reduction is not an observed result.
+- The API has no authentication and persists local history, plans, and audit data under `.loadguard/`; protect or delete that directory as appropriate.
+
+The dashboard’s `/privacy` endpoint documents the current capture contract.
 
 ---
 
-## 🏗️ Project Structure
+## 🏗️ Project structure
 
-```
+```text
 cognitive-load-ai-coworker/
-├── app.py                     # FastAPI entrypoint (serves dashboard + /analyze)
+├── app.py                     # FastAPI entrypoint
+├── pyproject.toml             # package metadata and optional dependency groups
+├── requirements.txt           # installs the API + LLM + MCP groups
 ├── src/loadguard/
-│   ├── models.py              # dataclasses: Event, Task, Absence, Worker, LoadReport, Plan
-│   ├── signals.py             # ingest events, compute features
-│   ├── scoring.py             # weighted Cognitive Load Score (0–100)
+│   ├── models.py              # domain dataclasses
+│   ├── signals.py             # event ingestion and feature aggregation
+│   ├── scoring.py             # weighted score (0–100)
 │   ├── recommender.py         # deterministic planner
-│   ├── decision.py            # Granite Decision Agent + deterministic gate
-│   ├── guardian.py            # Granite Guardian + deterministic safety guard
-│   ├── baseline.py            # personal baseline, trend, confidence
-│   ├── actions.py             # human approval, .ics/CSV export, audit trail
-│   ├── agents.py              # SignalAnalyst / Diagnostician / Planner / Narrator
-│   ├── workflow.py            # end-to-end multi-agent orchestration
-│   ├── langgraph_flow.py      # LangGraph StateGraph (+ sequential fallback)
-│   ├── impact.py              # before/after impact estimator
-│   ├── availability.py        # absences + deadline-driven reassignment alerts
-│   ├── projection.py          # end-of-day projection + midday re-organization
-│   ├── scheduler.py           # morning + midday daily cycle
-│   ├── benchmark.py           # objective metrics + pilot evaluation
-│   ├── llm.py                 # ChatModel: heuristic / watsonx / ollama (Granite)
-│   └── api.py                 # FastAPI routes
+│   ├── decision.py             # Granite proposal + deterministic gate
+│   ├── guardian.py             # safety validation
+│   ├── baseline.py             # personal history, trend, confidence
+│   ├── actions.py              # approval, ICS/CSV export, audit
+│   ├── agents.py               # thin agent wrappers
+│   ├── workflow.py              # end-to-end orchestration
+│   ├── langgraph_flow.py        # LangGraph StateGraph + fallback
+│   ├── impact.py                # projected impact
+│   ├── availability.py          # absences and reassignment alerts
+│   ├── projection.py            # midday projection
+│   ├── scheduler.py             # daily-cycle orchestration
+│   ├── benchmark.py             # objective and pilot metrics
+│   ├── llm.py                   # heuristic, watsonx, and Ollama models
+│   └── api.py                   # FastAPI routes
 ├── demo/
-│   ├── sample_events.jsonl    # realistic overload-morning signal stream
-│   ├── demo.py                # zero-dependency CLI + HTML report generator
-│   └── benchmark.py           # benchmark CLI
+│   ├── sample_events.jsonl      # reproducible sample input
+│   ├── demo.py                  # CLI and HTML report
+│   └── benchmark.py             # benchmark CLI
 ├── scripts/
-│   ├── capture_signals.py     # real-signal capture (ICS calendar + notifications)
-│   ├── schedule.py            # morning + midday daily cycle CLI
-│   └── sample_calendar.ics    # sample ICS for the capture demo
-├── mcp_server/
-│   └── server.py              # MCP tools so IBM Bob drives the pipeline
-├── .bob/
-│   ├── custom_modes.yaml      # IBM Bob "Cognitive Load Engineer" mode
-│   └── mcp.json               # register the LoadGuard MCP server
-├── bob_sessions/              # IBM Bob session exports
-├── tests/                     # unit tests (scoring, workflow, benchmark, capture)
-└── docs/
-    ├── architecture.md        # detailed architecture + scoring rationale
-    ├── architecture.mmd       # Mermaid architecture diagram
-    └── references.md          # research citations
+│   ├── capture_signals.py       # ICS + notification capture
+│   └── schedule.py              # morning + midday CLI
+├── mcp_server/                  # MCP tools for IBM Bob
+├── .bob/                        # Bob mode and MCP configuration
+├── tests/                       # unit and documentation-sync tests
+└── docs/                        # architecture and references
 ```
 
-## 👥 Team
+## 🧪 Development
+
+The Makefile mirrors the CI checks:
+
+```bash
+make test       # unit tests
+make coverage   # branch coverage; requires 100%
+make mypy       # type checking
+make lint       # Ruff lint + formatting check
+make check      # complete gate
+```
+
+Equivalent commands are documented in `Makefile` and run by GitHub Actions on Python 3.11 and 3.12. Before opening a pull request, run `make check`.
+
+## 🧑‍💻 IBM Bob usage
+
+IBM Bob was used for planning, architecture, implementation, tests, debugging, and review. The repeatable project mode is [`.bob/custom_modes.yaml`](.bob/custom_modes.yaml) and session exports are in [`bob_sessions/`](bob_sessions/).
+
+The MCP integration lets Bob invoke the LoadGuard pipeline during development; it is documented separately in [`mcp_server/README.md`](mcp_server/README.md).
+
+## 👥 Team and license
 
 - *(add team member names, universities, and roles here)*
 
-## 📄 License
-
-MIT — see [LICENSE](LICENSE).
+MIT — see [`LICENSE`](LICENSE).

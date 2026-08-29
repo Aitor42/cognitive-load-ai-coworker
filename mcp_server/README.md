@@ -6,10 +6,14 @@ directly from a Bob session.
 
 ## Setup
 
+From the repository root, install the optional MCP dependency and run the self-test:
+
 ```bash
-pip install mcp
+pip install ".[bob]"
 python mcp_server/server.py --self-test   # verify tools work without a Bob session
 ```
+
+The server is intended for trusted local clients. It does not provide authentication or network access controls.
 
 ## Tools
 
@@ -41,6 +45,6 @@ Add the server to [`.bob/mcp.json`](../.bob/mcp.json):
 
 ## Data format
 
-`events` is a list of `{"timestamp": "...", "kind": "...", "duration_minutes": n, "meta": {...}}`.
+`events` is a list of `{"timestamp": "...", "kind": "...", "duration_minutes": n, "meta": {...}}`. Timestamps accept the formats supported by the LoadGuard event parser.
 `tasks` is a list of `{"title": "...", "priority": 1..5, ...}`. See
 `demo/sample_events.jsonl` and `src/loadguard/sample_data.py` for examples.

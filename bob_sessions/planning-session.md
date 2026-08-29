@@ -4,14 +4,14 @@
 
 ## What Bob contributed
 
-- Drafted the solution design: a **sense → diagnose → plan → explain → impact** pipeline.
+- Drafted the solution design: a **sense → diagnose → propose → validate → approve → act → measure** pipeline.
 - Proposed the **hybrid deterministic + LLM** architecture (deterministic scoring as guardrail,
   LLM as narrator), so recommendations stay grounded and reproducible.
 - Defined the five behavioral proxies and their normalization thresholds
   (`context_switches_per_hour`, `meeting_ratio`, `notification_rate`, `focus_ratio`,
   `multitasking_index`).
 - Designed the multi-agent decomposition (SignalAnalyst → LoadDiagnostician → WorkloadPlanner →
-  Narrator) and the Impact Estimator.
+  Decision Agent → Guardian → Narrator) and the Impact Estimator.
 - Scoped the MVP for a two-week build: dependency-free core, optional FastAPI + watsonx layers.
 
 ## Key decisions locked in

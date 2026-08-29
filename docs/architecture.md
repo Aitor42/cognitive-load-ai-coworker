@@ -18,7 +18,7 @@ The deterministic layer is the source of truth for *safety*; Granite proposes *w
 the human decides *whether it happens*. This hybrid design keeps the prototype grounded,
 reproducible, and safe, while still making the AI central.
 
-See [`architecture.mmd`](architecture.mmd) for the full Mermaid diagram.
+See [`architecture.mmd`](architecture.mmd) for the full Mermaid diagram. The same diagram is embedded in the root [`README.md`](../README.md); `tests/test_docs.py` keeps both copies synchronized.
 
 ## Design principles
 
@@ -227,6 +227,10 @@ blended as a time-weighted average, then re-scored.
 
 `scripts/schedule.py` is a cron-friendly CLI for both beats; the functions themselves are
 pure, so any scheduler (cron, an in-process loop, APScheduler) can drive them.
+
+## Persistence and deployment boundaries
+
+The optional API stores plans, score history, and approval audit records under `.loadguard/` in the repository root. This directory is local runtime state and is ignored by Git. The API has no authentication and exposes deletion endpoints; bind it to `127.0.0.1` for local use or add an authentication/reverse-proxy layer before exposing it to a network. Docker binds to `0.0.0.0` inside the container so port publishing works.
 
 ## Extensibility
 

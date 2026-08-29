@@ -1,6 +1,6 @@
 # References
 
-Sources supporting the problem statement and design rationale.
+Sources supporting the problem statement and design rationale. These references motivate the use of interruption and context-switching proxies; they do not validate LoadGuard's prototype score or establish clinical effectiveness.
 
 ## Interruption & context switching
 

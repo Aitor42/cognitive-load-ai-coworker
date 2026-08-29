@@ -72,7 +72,7 @@ def find_reassignment_alerts(
                 assignee=task.assignee,
                 deadline=task.deadline,
                 reason=(
-                    f"{task.assignee} is on {KIND_LABELS[absence.kind]} and cannot "
+                    f"{task.assignee} is on {KIND_LABELS.get(absence.kind, absence.kind or 'leave')} and cannot "
                     f"complete '{task.title}' by its deadline"
                 ),
                 suggested_assignees=suggestions,

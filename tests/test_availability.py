@@ -118,6 +118,15 @@ class TestFindReassignmentAlerts(unittest.TestCase):
         self.assertEqual(len(alerts), 1)
         self.assertIn("leave", alerts[0].reason)
 
+    def test_custom_absence_kind_fallback(self) -> None:
+        abs_obj = Absence(start=50.0, end=150.0, kind=LEAVE)
+        abs_obj.kind = "medical"
+        workers = [Worker(id="w9", name="Doctor", absences=[abs_obj])]
+        tasks = [Task(id="b", title="Emails", priority=2, assignee="w9", deadline=100.0)]
+        alerts = find_reassignment_alerts(tasks, workers, now=0.0)
+        self.assertEqual(len(alerts), 1)
+        self.assertIn("medical", alerts[0].reason)
+
     def test_now_defaults_to_current_time(self) -> None:
         tasks = [Task(id="a", title="Any", priority=5, assignee="w1", deadline=150.0)]
         # Past deadline with the default (real) now -> no alert.

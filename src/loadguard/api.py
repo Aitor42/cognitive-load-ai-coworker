@@ -322,6 +322,14 @@ def approve(req: ApproveRequest) -> dict[str, Any]:
         # safety gate as an original plan (no invented tasks, no critical
         # delegation, valid actions).
         task_title_map = {t.get("id"): t.get("title", "") for t in stored.get("tasks", [])}
+        for item in req.items:
+            tid = item.get("task_id")
+            if tid and item.get("title"):
+                for t in stored.get("tasks", []):
+                    if t.get("id") == tid:
+                        t["title"] = item["title"]
+                        task_title_map[tid] = item["title"]
+
         cleaned = [
             {
                 "position": i + 1,

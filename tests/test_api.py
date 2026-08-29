@@ -191,6 +191,19 @@ class TestApi(unittest.TestCase):
         plan_items = PLANS[pid]["payload"]["plan"]["items"]
         self.assertEqual(plan_items[0]["title"], "Write incident postmortem")
 
+    def test_edit_plan_with_renamed_title_passes_safety_gate(self) -> None:
+        data = self._analyze()
+        pid = data["plan_id"]
+        # Rename the task title during editing
+        items = [{"action": "do", "task_id": "t1", "title": "Write incident postmortem - Urgent Draft"}]
+        resp = self.client.post(
+            "/approve",
+            json={"plan_id": pid, "decision": "edited", "items": items},
+        )
+        self.assertEqual(resp.status_code, 200)
+        plan_items = PLANS[pid]["payload"]["plan"]["items"]
+        self.assertEqual(plan_items[0]["title"], "Write incident postmortem - Urgent Draft")
+
     def test_edit_plan_recomputes_impact(self) -> None:
         """Saving an edited plan must return a fresh before/after projection."""
         data = self._analyze()

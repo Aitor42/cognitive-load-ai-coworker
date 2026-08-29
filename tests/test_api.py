@@ -178,6 +178,19 @@ class TestApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(PLANS[pid]["payload"]["plan"]["items"]), 2)
 
+    def test_edit_plan_without_title_auto_populates_from_tasks(self) -> None:
+        data = self._analyze()
+        pid = data["plan_id"]
+        # Pass minimal item with task_id and action only
+        items = [{"action": "do", "task_id": "t1"}]
+        resp = self.client.post(
+            "/approve",
+            json={"plan_id": pid, "decision": "edited", "items": items},
+        )
+        self.assertEqual(resp.status_code, 200)
+        plan_items = PLANS[pid]["payload"]["plan"]["items"]
+        self.assertEqual(plan_items[0]["title"], "Write incident postmortem")
+
     def test_edit_plan_recomputes_impact(self) -> None:
         """Saving an edited plan must return a fresh before/after projection."""
         data = self._analyze()

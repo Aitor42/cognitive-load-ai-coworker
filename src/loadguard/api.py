@@ -337,12 +337,13 @@ def approve(req: ApproveRequest) -> dict[str, Any]:
         # An edited plan replaces the stored items, but it must pass the same
         # safety gate as an original plan (no invented tasks, no critical
         # delegation, valid actions).
+        task_title_map = {t.get("id"): t.get("title", "") for t in stored.get("tasks", [])}
         cleaned = [
             {
                 "position": i + 1,
                 "action": item["action"],
                 "task_id": item.get("task_id"),
-                "title": item.get("title", ""),
+                "title": item.get("title") or task_title_map.get(item.get("task_id")) or item["action"],
                 "rationale": item.get("rationale", ""),
             }
             for i, item in enumerate(req.items)

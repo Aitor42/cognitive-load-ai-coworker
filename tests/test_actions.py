@@ -277,6 +277,11 @@ class TestExportIcs(unittest.TestCase):
         ics = export_ics(plan, _tasks(), start_epoch=1_700_000_000.0, existing_events=existing)
         self.assertIn("DTSTART:20231114T231320Z", ics)
 
+    def test_export_ics_with_tzid(self):
+        """When tzid is provided, X-WR-TIMEZONE is included in calendar header."""
+        ics = export_ics(_plan(), _tasks(), start_epoch=1_700_000_000.0, tzid="Europe/Madrid")
+        self.assertIn("X-WR-TIMEZONE:Europe/Madrid", ics)
+
     def test_export_ics_with_busy_intervals(self):
         """Custom busy intervals prevent collision."""
         busy = [(1_700_000_000.0, 1_700_001_800.0)]  # 30 min busy

@@ -128,6 +128,7 @@ def export_ics(
     busy_intervals: list[tuple[float, float]] | None = None,
     horizon_epoch: float | None = None,
     alarm_minutes: float | None = FOCUS_ALARM_MINUTES,
+    tzid: str | None = None,
 ) -> str:
     """Render the plan's focus/recovery blocks as an iCalendar (.ics) string.
 
@@ -172,6 +173,8 @@ def export_ics(
         "PRODID:-//LoadGuard//Cognitive Load Co-Worker//EN",
         "CALSCALE:GREGORIAN",
     ]
+    if tzid:
+        lines.append(f"X-WR-TIMEZONE:{tzid}")
     for item in plan.items:
         if cursor >= horizon_epoch:
             break

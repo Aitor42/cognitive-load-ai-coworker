@@ -423,7 +423,7 @@ def feedback(req: FeedbackRequest) -> dict[str, Any]:
 
 
 @app.get("/plan/{plan_id}/export.ics")
-def export_plan_ics(plan_id: str) -> Response:
+def export_plan_ics(plan_id: str, tzid: Optional[str] = None) -> Response:
     stored = PLANS.get(plan_id)
     if stored is None:
         raise HTTPException(status_code=404, detail="unknown plan_id")
@@ -436,6 +436,7 @@ def export_plan_ics(plan_id: str) -> Response:
             tasks,
             existing_events=existing_events,
             alarm_minutes=stored["alarm_minutes"],
+            tzid=tzid,
         ),
         media_type="text/calendar",
         headers={"Content-Disposition": f'attachment; filename="loadguard-{plan_id}.ics"'},

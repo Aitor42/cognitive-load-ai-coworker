@@ -154,6 +154,12 @@ class TestApi(unittest.TestCase):
         # Event ends at 1700003600 (23:13:20Z), focus block/task must start at or after 23:13:20Z
         self.assertIn("DTSTART:20231114T231320Z", ics)
 
+    def test_export_ics_accepts_tzid_query_param(self) -> None:
+        data = self._analyze()
+        pid = data["plan_id"]
+        ics = self.client.get(f"/plan/{pid}/export.ics?tzid=Europe/Madrid").text
+        self.assertIn("X-WR-TIMEZONE:Europe/Madrid", ics)
+
     def test_export_csv(self) -> None:
         data = self._analyze()
         pid = data["plan_id"]

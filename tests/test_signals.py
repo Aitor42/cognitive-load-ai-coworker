@@ -139,6 +139,16 @@ class TestComputeFeatures(unittest.TestCase):
         ]
         self.assertEqual(_window_minutes(events), 60.0)
 
+    def test_multiday_window_calculation(self) -> None:
+        # Events across 3 days (e.g. Day 1, Day 2, Day 3)
+        events = [
+            Event(timestamp=0.0, kind=CONTEXT_SWITCH),
+            Event(timestamp=86400.0 * 1, kind=CONTEXT_SWITCH),
+            Event(timestamp=86400.0 * 2, kind=CONTEXT_SWITCH),
+        ]
+        # 3 days * 480 min = 1440 min
+        self.assertEqual(_window_minutes(events), 1440.0)
+
     def test_unknown_event_kind_is_ignored(self) -> None:
         from types import SimpleNamespace
 

@@ -77,12 +77,22 @@ def load_events(path: str | Path) -> list[Event]:
 
 
 def _window_minutes(events: Iterable[Event]) -> float:
-    """Total time span covered by the events, with a 60-minute floor."""
+    """Total time span covered by the events, with a 60-minute floor.
+
+    For single-day workloads, uses the actual event span (floor 60 min).
+    For multi-day workloads (> 24 hours), estimates active working time
+    (480 min / 8 h per active calendar day) so rates do not dilute across nights.
+    """
     stamps = [e.timestamp for e in events]
     if not stamps:
         return 60.0
-    span = max(stamps) - min(stamps)
-    return max(span / 60.0, 60.0)  # at least one hour
+    raw_span = max(stamps) - min(stamps)
+    if raw_span <= 86400.0:
+        return max(raw_span / 60.0, 60.0)
+    unique_days = {
+        datetime.fromtimestamp(ts, tz=timezone.utc).date() for ts in stamps
+    }
+    return max(len(unique_days) * 480.0, 60.0)
 
 
 def compute_features(events: Iterable[Event], window_minutes: float | None = None) -> FeatureSet:

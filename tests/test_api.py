@@ -122,6 +122,25 @@ class TestApi(unittest.TestCase):
         ics = self.client.get(f"/plan/{pid}/export.ics").text
         self.assertIn("TRIGGER:-PT10M", ics)
 
+    def test_midday_filters_completed_tasks(self) -> None:
+        """Midday reorganization excludes tasks specified in completed_task_ids."""
+        sample = self.client.get("/sample").json()
+        resp = self.client.post(
+            "/midday",
+            json={
+                "events": sample["events"],
+                "tasks": sample["tasks"],
+                "elapsed_minutes": 240,
+                "completed_task_ids": ["t1", "t2"],
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        if body.get("plan") and body["plan"].get("items"):
+            task_ids = [i.get("task_id") for i in body["plan"]["items"] if i.get("task_id")]
+            self.assertNotIn("t1", task_ids)
+            self.assertNotIn("t2", task_ids)
+
     def test_export_ics_respects_existing_events(self) -> None:
         """Exported calendar blocks must not collide with stored existing meetings."""
         events = [

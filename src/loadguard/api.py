@@ -75,6 +75,7 @@ class MiddayRequest(BaseModel):
     workers: Optional[list[dict[str, Any]]] = None
     elapsed_minutes: float = 240.0
     total_minutes: float = 480.0
+    completed_task_ids: Optional[list[str]] = None
 
 
 class ApproveRequest(BaseModel):
@@ -298,12 +299,14 @@ def midday(req: MiddayRequest) -> dict[str, Any]:
     events = [parse_event(e) for e in req.events]
     tasks = _to_tasks(req.tasks)
     workers = _to_workers(req.workers or [])
+    completed_ids = set(req.completed_task_ids) if req.completed_task_ids else None
     review = run_midday_review(
         events,
         tasks,
         req.elapsed_minutes,
         req.total_minutes,
         workers=workers,
+        completed_task_ids=completed_ids,
     )
     result = asdict(review)
     if review.plan is not None:

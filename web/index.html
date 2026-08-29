@@ -300,6 +300,7 @@ function render(r){
 
   const itemRows=r.plan.items.map((i,idx)=>`<li>
       <input type="checkbox" class="editcb hidden" data-idx="${idx}" checked>
+      ${i.task_id?`<label title="Mark completed" style="cursor:pointer;margin-right:6px"><input type="checkbox" class="completedcb" data-task-id="${esc(i.task_id)}"> ✓</label>`:''}
       <span class="badge ${esc(i.action)}">${esc(i.action)}</span>
       <div class="itembody"><b>${esc(i.title)}</b><div class="why">${esc(i.rationale)}</div></div>
     </li>`).join("");
@@ -478,9 +479,12 @@ async function middayReview(){
   document.getElementById("err").textContent="";
   const box=document.getElementById("middayBox");
   try{
+    const completedTasks = Array.from(document.querySelectorAll(".completedcb:checked"))
+      .map(cb => cb.dataset.taskId)
+      .filter(Boolean);
     const elapsed=spanMinutes(EVENTS);
     const r=await api("/midday",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({events:EVENTS,tasks:TASKS,workers:WORKERS,elapsed_minutes:elapsed,total_minutes:480})});
+      body:JSON.stringify({events:EVENTS,tasks:TASKS,workers:WORKERS,elapsed_minutes:elapsed,total_minutes:480,completed_task_ids:completedTasks})});
     const planHtml=(r.reorganized&&r.plan&&r.plan.items&&r.plan.items.length)
       ? `<h2 style="margin-top:14px">Reorganized plan</h2><ul>${itemRowsHtml(r.plan.items)}</ul>
          <div class="actions" id="middayActions">

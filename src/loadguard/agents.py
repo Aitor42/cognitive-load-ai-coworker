@@ -33,8 +33,9 @@ class LoadDiagnosticianAgent:
         features: FeatureSet,
         role: str | None = None,
         weights: dict[str, float] | None = None,
+        baseline: Any = None,
     ) -> LoadReport:
-        return score(features, weights=weights, role=role)
+        return score(features, weights=weights, role=role, baseline=baseline)
 
 
 class WorkloadPlannerAgent:

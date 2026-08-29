@@ -23,6 +23,8 @@ import warnings
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .models import MEETING, Event, Plan, Task
 
@@ -100,10 +102,20 @@ def _ics_fold(text: str) -> str:
     return "\r\n".join(lines)
 
 
-def _day_end_epoch(epoch: float) -> float:
-    """Start of the next UTC day after ``epoch`` (exclusive day bound)."""
-    dt = datetime.fromtimestamp(epoch, tz=timezone.utc)
-    next_day = datetime(dt.year, dt.month, dt.day, tzinfo=timezone.utc) + timedelta(days=1)
+def _day_end_epoch(epoch: float, tz_name: str | None = None) -> float:
+    """Start of the next day after ``epoch`` (exclusive day bound).
+
+    Accepts an optional IANA timezone string (e.g. "America/New_York", "Europe/Madrid")
+    or falls back to UTC when unsupplied or invalid.
+    """
+    tz: Any = timezone.utc
+    if tz_name:
+        try:
+            tz = ZoneInfo(tz_name)
+        except (ZoneInfoNotFoundError, ValueError, OSError):
+            tz = timezone.utc
+    dt = datetime.fromtimestamp(epoch, tz=tz)
+    next_day = datetime(dt.year, dt.month, dt.day, tzinfo=tz) + timedelta(days=1)
     return next_day.timestamp()
 
 
@@ -129,6 +141,7 @@ def export_ics(
     horizon_epoch: float | None = None,
     alarm_minutes: float | None = FOCUS_ALARM_MINUTES,
     tzid: str | None = None,
+    tz_name: str | None = None,
 ) -> str:
     """Render the plan's focus/recovery blocks as an iCalendar (.ics) string.
 
@@ -141,24 +154,16 @@ def export_ics(
     in genuine free gaps.
 
     Blocks that would start at or after *horizon_epoch* (by default the end of
-    the UTC day containing *start_epoch*) are not exported, so a plan cannot
-    spill its protected blocks into the middle of the night.
+    the day containing *start_epoch* in *tz_name*) are not exported, so a plan
+    cannot spill its protected blocks into the middle of the night.
 
     Focus blocks carry a ``VALARM`` display reminder that fires *alarm_minutes*
     before the block starts (pass ``None`` or ``0`` to export without alarms).
     """
     if start_epoch is None:
-        stamps = [
-            e.timestamp
-            for e in (existing_events or [])
-            if getattr(e, "timestamp", None) is not None
-        ]
-        if stamps:
-            start_epoch = float(math.ceil(min(stamps) / 900.0) * 900)
-        else:
-            start_epoch = float(math.ceil(time.time() / 900.0) * 900)
+        start_epoch = float(math.ceil(time.time() / 900.0) * 900)
     if horizon_epoch is None:
-        horizon_epoch = _day_end_epoch(start_epoch)
+        horizon_epoch = _day_end_epoch(start_epoch, tz_name=tz_name or tzid)
     cursor = start_epoch
     dtstamp = _ics_datetime(time.time())
 

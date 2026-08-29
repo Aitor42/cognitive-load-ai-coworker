@@ -87,6 +87,7 @@ class AnalyzeRequest(BaseModel):
     # Lead time (minutes) of the VALARM reminder in the exported .ics calendar.
     # None uses the server default (FOCUS_ALARM_MINUTES); 0 exports without alarms.
     alarm_minutes: Optional[float] = Field(default=None, ge=0.0)
+    tz_name: Optional[str] = None
 
 
 class MiddayRequest(BaseModel):
@@ -192,6 +193,7 @@ def _store_plan(
     events: list[Any],
     workers: list[Worker] | None = None,
     alarm_minutes: float | None = None,
+    tz_name: str | None = None,
 ) -> dict[str, Any]:
     """Persist a workflow result for later approval and export.
 
@@ -206,6 +208,7 @@ def _store_plan(
         "events": events,
         "workers": [asdict(w) for w in workers] if workers else [],
         "alarm_minutes": FOCUS_ALARM_MINUTES if alarm_minutes is None else alarm_minutes,
+        "tz_name": tz_name,
     }
     _persist_plans()
     payload["plan_id"] = plan_id
@@ -294,7 +297,12 @@ def analyze(req: AnalyzeRequest) -> dict[str, Any]:
         workers=workers,
     )
     return _store_plan(
-        result, tasks, [asdict(e) for e in events], workers, alarm_minutes=req.alarm_minutes
+        result,
+        tasks,
+        [asdict(e) for e in events],
+        workers,
+        alarm_minutes=req.alarm_minutes,
+        tz_name=req.tz_name,
     )
 
 
@@ -437,6 +445,7 @@ def export_plan_ics(plan_id: str, tzid: Optional[str] = None) -> Response:
             existing_events=existing_events,
             alarm_minutes=stored["alarm_minutes"],
             tzid=tzid,
+            tz_name=tzid or stored.get("tz_name"),
         ),
         media_type="text/calendar",
         headers={"Content-Disposition": f'attachment; filename="loadguard-{plan_id}.ics"'},

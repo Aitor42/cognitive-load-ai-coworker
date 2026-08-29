@@ -242,6 +242,16 @@ class TestExportIcs(unittest.TestCase):
         )
         self.assertEqual(ics.count("BEGIN:VEVENT"), 4)
 
+    def test_day_end_epoch_timezone(self):
+        """_day_end_epoch respects custom timezone string."""
+        from loadguard.actions import _day_end_epoch
+        # Start at 23:00 UTC (1_700_002_800). Next UTC midnight is +3600s.
+        utc_end = _day_end_epoch(1_700_002_800.0, tz_name="UTC")
+        self.assertEqual(utc_end, 1_700_006_400.0)
+        # In America/New_York (UTC-5 in Nov), 23:00 UTC is 18:00 EST (same day), so NY midnight is 6 hours later (+21600s -> 1_700_024_400.0)
+        ny_end = _day_end_epoch(1_700_002_800.0, tz_name="America/New_York")
+        self.assertEqual(ny_end, 1_700_024_400.0)
+
     def test_unknown_action_warns(self):
         """An action outside the known vocabulary warns instead of failing silently."""
         plan = Plan(

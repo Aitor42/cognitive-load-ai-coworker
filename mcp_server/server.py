@@ -137,11 +137,13 @@ def export_plan_ics(
     tasks: list[dict],
     start_epoch: float | None = None,
     alarm_minutes: float | None = None,
+    tz_name: str | None = None,
 ) -> dict:
     """Render the approved plan's focus/recovery blocks as an .ics calendar.
 
     *alarm_minutes* sets the VALARM lead time for focus blocks: omitted uses
     the FOCUS_ALARM_MINUTES default and 0 exports without reminders.
+    *tz_name* sets the timezone for calculating the day-end horizon.
     """
     try:
         parsed_events = _to_events(events)
@@ -156,6 +158,7 @@ def export_plan_ics(
                 start_epoch,
                 existing_events=parsed_events,
                 alarm_minutes=alarm,
+                tz_name=tz_name,
             )
         }
     except Exception as exc:

@@ -25,5 +25,5 @@ import uvicorn  # noqa: E402
 from loadguard.api import app  # noqa: E402
 
 if __name__ == "__main__":
-    host = os.environ.get("HOST", "0.0.0.0")
+    host = os.environ.get("HOST", "127.0.0.1")
     uvicorn.run(app, host=host, port=8000)

@@ -132,12 +132,12 @@ class TestComputeFeatures(unittest.TestCase):
         f = compute_features(events)
         self.assertAlmostEqual(f.context_switches_per_hour, 1.0)
 
-    def test_window_floor_is_one_hour(self) -> None:
+    def test_window_floor_is_fifteen_minutes(self) -> None:
         events = [
             Event(timestamp=0.0, kind=CONTEXT_SWITCH),
             Event(timestamp=60.0, kind=CONTEXT_SWITCH),
         ]
-        self.assertEqual(_window_minutes(events), 60.0)
+        self.assertEqual(_window_minutes(events), 15.0)
 
     def test_multiday_window_calculation(self) -> None:
         # Events across 3 days (e.g. Day 1, Day 2, Day 3)

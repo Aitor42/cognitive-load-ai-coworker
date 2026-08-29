@@ -86,19 +86,35 @@ def _level(score: float) -> str:
     return OVERLOAD
 
 
-def _contributions(factors: dict[str, float]) -> dict[str, float]:
+from typing import Any
+
+from .models import HIGH, LOW, MODERATE, OVERLOAD, FeatureSet, LoadReport
+
+
+def _contributions(
+    factors: dict[str, float],
+    baseline: Any = None,
+) -> dict[str, float]:
     """Normalize each factor to its 0..1 contribution to the score.
 
-    This is the single source of truth for how each factor contributes, so the
-    numeric score and the "Main drivers" explanation can never disagree.
+    Supports optional adaptive midpoints derived from the user's personal
+    baseline mean, so high-communication workers are evaluated relative to their
+    personal baseline rather than a static global threshold.
     """
+    scale = 1.0
+    if baseline is not None and getattr(baseline, "n", 0) >= 2 and getattr(baseline, "mean", 0.0) > 0:
+        scale = max(0.75, min(getattr(baseline, "mean") / 40.0, 1.5))
+
+    switches_mid = MIDPOINT_CONTEXT_SWITCHES * scale
+    notifs_mid = MIDPOINT_NOTIFICATIONS * scale
+
     return {
         "context_switches_per_hour": _normalize(
-            factors.get("context_switches_per_hour", 0.0), MIDPOINT_CONTEXT_SWITCHES
+            factors.get("context_switches_per_hour", 0.0), switches_mid
         ),
         "meeting_ratio": max(0.0, min(factors.get("meeting_ratio", 0.0), 1.0)),
         "notification_rate": _normalize(
-            factors.get("notification_rate", 0.0), MIDPOINT_NOTIFICATIONS
+            factors.get("notification_rate", 0.0), notifs_mid
         ),
         # Focus time is protective: invert it so more focus lowers the score.
         "focus_ratio": max(0.0, min(1.0 - factors.get("focus_ratio", 0.0), 1.0)),
@@ -141,6 +157,7 @@ def _explanation(
     factors: dict[str, float],
     weights: dict[str, float] | None = None,
     ai_interruption_ratio: float | None = None,
+    baseline: Any = None,
 ) -> str:
     factor_names = {
         "context_switches_per_hour": "context switches per hour",
@@ -150,14 +167,15 @@ def _explanation(
         "multitasking_index": "multitasking",
     }
     active = weights if weights is not None else DEFAULT_WEIGHTS
+    contribs = _contributions(factors, baseline=baseline)
     # Rank by weighted contribution (descending), consistent with score().
-    weighted = {k: c * active.get(k, 0.0) for k, c in _contributions(factors).items()}
+    weighted = {k: c * active.get(k, 0.0) for k, c in contribs.items()}
     top = sorted(weighted.items(), key=lambda kv: kv[1], reverse=True)[:2]
     drivers = ", ".join(factor_names[k] for k, _ in top)
     text = f"Main drivers: {drivers}."
     # The interaction term can dominate the score without showing up in the
-    # top drivers, so surface it whenever it is meaningful.
-    interaction = _interaction_bonus(_contributions(factors)) * INTERACTION_WEIGHT
+    # top drivers, surface it whenever it is meaningful.
+    interaction = _interaction_bonus(contribs) * INTERACTION_WEIGHT
     if interaction >= 0.02:
         text += " Compounding meetings and interruptions amplify the load."
     if ai_interruption_ratio is not None and ai_interruption_ratio >= 0.40:
@@ -171,11 +189,12 @@ def score(
     features: FeatureSet,
     weights: dict[str, float] | None = None,
     role: str | None = None,
+    baseline: Any = None,
 ) -> LoadReport:
     """Compute a Cognitive Load Score from a FeatureSet.
 
-    Supports custom weights or role-specific profiles (e.g. "developer",
-    "researcher", "manager").
+    Supports custom weights, role-specific profiles (e.g. "developer",
+    "researcher", "manager"), and baseline-adaptive midpoints.
     """
     active_weights = _resolve_weights(weights, role)
     factors = {
@@ -185,7 +204,7 @@ def score(
         "focus_ratio": round(features.focus_ratio, 2),
         "multitasking_index": round(features.multitasking_index, 2),
     }
-    contributions = _contributions(factors)
+    contributions = _contributions(factors, baseline=baseline)
     base = sum(contributions[k] * active_weights.get(k, 0.0) for k in active_weights)
     interaction = _interaction_bonus(contributions) * INTERACTION_WEIGHT
     total = min(base + interaction, 1.0)
@@ -201,6 +220,6 @@ def score(
         score=value,
         level=level,
         factors=factors,
-        explanation=_explanation(factors, active_weights, ai_ratio),
+        explanation=_explanation(factors, active_weights, ai_ratio, baseline=baseline),
         ai_interruption_ratio=ai_ratio,
     )

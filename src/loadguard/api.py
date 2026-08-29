@@ -53,9 +53,30 @@ app = FastAPI(
 _DATA_DIR = Path(__file__).resolve().parents[2] / ".loadguard"
 HISTORY_PATH = _DATA_DIR / "history.jsonl"
 AUDIT_PATH = _DATA_DIR / "audit.jsonl"
+PLANS_PATH = _DATA_DIR / "plans.json"
 
-# In-memory plan store: plan_id -> {"payload": ..., "tasks": [...], "events": [...]}
-PLANS: dict[str, dict[str, Any]] = {}
+
+def _load_persisted_plans() -> dict[str, dict[str, Any]]:
+    if PLANS_PATH.exists():
+        try:
+            return json.loads(PLANS_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+    return {}
+
+
+# Plan store (persisted in .loadguard/plans.json): plan_id -> {"payload": ..., "tasks": [...], "events": [...]}
+PLANS: dict[str, dict[str, Any]] = _load_persisted_plans()
+
+
+def _persist_plans() -> None:
+    try:
+        _DATA_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = PLANS_PATH.with_suffix(".tmp")
+        tmp.write_text(json.dumps(PLANS), encoding="utf-8")
+        tmp.replace(PLANS_PATH)
+    except Exception:
+        pass
 
 
 class AnalyzeRequest(BaseModel):
@@ -188,6 +209,7 @@ def _store_plan(
         "workers": [asdict(w) for w in workers] if workers else [],
         "alarm_minutes": FOCUS_ALARM_MINUTES if alarm_minutes is None else alarm_minutes,
     }
+    _persist_plans()
     payload["plan_id"] = plan_id
     return payload
 
@@ -308,6 +330,7 @@ def midday(req: MiddayRequest) -> dict[str, Any]:
             "workers": [asdict(w) for w in workers],
             "alarm_minutes": FOCUS_ALARM_MINUTES,
         }
+        _persist_plans()
         result["plan_id"] = plan_id
     return result
 
@@ -359,6 +382,7 @@ def approve(req: ApproveRequest) -> dict[str, Any]:
                 detail=f"edited plan failed the safety gate: {guard.summary()}",
             )
         stored["payload"]["plan"]["items"] = cleaned
+        _persist_plans()
     impact: dict[str, Any] | None = None
     if req.items is not None:
         # The edited plan changes what will actually be applied, so the

@@ -576,6 +576,13 @@ class TestApi(unittest.TestCase):
         self.assertEqual(resp.json()["format"], "ics")
         self.assertEqual(len(resp.json()["events"]), 1)
 
+    def test_plans_persist_to_disk(self) -> None:
+        data = self._analyze()
+        pid = data["plan_id"]
+        self.assertTrue(api_module.PLANS_PATH.exists())
+        loaded = api_module._load_persisted_plans()
+        self.assertIn(pid, loaded)
+
     def test_pilot_endpoint_reports_projection_without_outcome(self) -> None:
         resp = self.client.get("/pilot")
         self.assertEqual(resp.status_code, 200)

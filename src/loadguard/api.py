@@ -33,6 +33,7 @@ from .actions import (
 )
 from .baseline import append_score, clear_history, load_history
 from .benchmark import run_pilot_evaluation
+from .calendar_parser import parse_calendar_text
 from .config import get_guardian_model, get_model
 from .guardian import validate_plan
 from .impact import estimate_impact
@@ -142,23 +143,6 @@ def _to_tasks(payload: list[dict[str, Any]]) -> list[Task]:
     ]
 
 
-@lru_cache(maxsize=1)
-def _capture_signals_module() -> Any:
-    """Load ``scripts/capture_signals.py`` by path so the API reuses the ICS parser.
-
-    The script lives outside the package (it is a CLI), so it is loaded
-    explicitly rather than imported; its top-level code only defines constants
-    and helper functions, so importing it is side-effect free.
-    """
-    script = Path(__file__).resolve().parents[2] / "scripts" / "capture_signals.py"
-    spec = importlib.util.spec_from_file_location("capture_signals", script)
-    if spec is None or spec.loader is None:
-        raise RuntimeError("could not locate scripts/capture_signals.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
 def _to_workers(payload: list[dict[str, Any]]) -> list[Worker]:
     """Build Worker objects (with nested absences) from API payload dicts.
 
@@ -260,7 +244,7 @@ def ingest(req: IngestRequest) -> dict[str, Any]:
     if fmt not in ("ics", "jsonl"):
         fmt = "ics" if text.upper().startswith("BEGIN:VCALENDAR") else "jsonl"
     if fmt == "ics":
-        events, _ = _capture_signals_module().parse_calendar_text(text)
+        events, _ = parse_calendar_text(text)
         return {"format": "ics", "events": [asdict(e) for e in events]}
     parsed: list[Any] = []
     for line in text.splitlines():

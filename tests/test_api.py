@@ -552,12 +552,16 @@ class TestApi(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 400)
 
-    def test_ingest_reports_parser_missing(self) -> None:
-        api_module._capture_signals_module.cache_clear()
-        with mock.patch("loadguard.api.importlib.util.spec_from_file_location", return_value=None):
-            with self.assertRaises(RuntimeError):
-                api_module._capture_signals_module()
-        api_module._capture_signals_module.cache_clear()
+    def test_ingest_ics_calendar_text(self) -> None:
+        ics_text = (
+            "BEGIN:VCALENDAR\nVERSION:2.0\n"
+            "BEGIN:VEVENT\nUID:1\nDTSTART:20260817T090000Z\nDTEND:20260817T100000Z\n"
+            "SUMMARY:Standup\nEND:VEVENT\nEND:VCALENDAR\n"
+        )
+        resp = self.client.post("/ingest", json={"text": ics_text, "format": "ics"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["format"], "ics")
+        self.assertEqual(len(resp.json()["events"]), 1)
 
     def test_pilot_endpoint_reports_projection_without_outcome(self) -> None:
         resp = self.client.get("/pilot")

@@ -61,6 +61,16 @@ class TestBuildPlan(unittest.TestCase):
         do_items = [i for i in plan.items if i.action == "do"]
         self.assertEqual([i.task_id for i in do_items], ["sooner", "later"])
 
+    def test_overload_deadline_takes_precedence_over_duration(self) -> None:
+        """In overload, an urgent longer task is prioritized before a non-urgent short task."""
+        tasks = [
+            Task(id="short_no_deadline", title="Short", priority=5, duration_minutes=15.0),
+            Task(id="long_imminent", title="Urgent", priority=5, duration_minutes=60.0, deadline=500.0),
+        ]
+        plan = build_plan(tasks, _overload_report())
+        do_items = [i for i in plan.items if i.action == "do"]
+        self.assertEqual([i.task_id for i in do_items], ["long_imminent", "short_no_deadline"])
+
     def test_non_todo_tasks_are_skipped(self) -> None:
         tasks = [
             Task(id="a", title="Done task", priority=5, status=DONE),

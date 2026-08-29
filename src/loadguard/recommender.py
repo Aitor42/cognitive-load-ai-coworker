@@ -31,15 +31,15 @@ DELEGATE_MAX_PRIORITY = {OVERLOAD: 2, HIGH: 1}
 
 
 def _sort_key(task: Task, level: str) -> tuple[float, float, float]:
-    """Sort key: primary=priority, secondary=duration (quick-win), tertiary=deadline.
+    """Sort key: primary=priority (desc), secondary=deadline (asc), tertiary=duration (asc).
 
-    In HIGH/OVERLOAD load, shorter tasks of the same priority are scheduled
-    first (quick-win effect): completing them early frees cognitive slots and
-    builds momentum.  Under lower load the duration tiebreaker is disabled.
+    Deadline always breaks ties first so imminent deliveries are never missed.
+    For tasks with the same deadline (or no deadline), shorter tasks are
+    scheduled first under HIGH/OVERLOAD (quick-win effect to reduce cognitive load).
     """
     deadline = task.deadline if task.deadline is not None else float("inf")
     duration_bonus = task.duration_minutes if level in (HIGH, OVERLOAD) else 0.0
-    return (-float(task.priority), duration_bonus, deadline)
+    return (-float(task.priority), deadline, duration_bonus)
 
 
 def _available_workers(

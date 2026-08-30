@@ -116,6 +116,19 @@ class TestMCPServer(unittest.TestCase):
         # self_test() executes all assertions without raising
         self_test()
 
+    def test_to_tasks_deadline_handling(self) -> None:
+        raw_tasks = [
+            {"id": "1", "deadline": "2026-08-17T12:00:00Z"},
+            {"id": "2", "deadline": ""},
+            {"id": "3", "deadline": None},
+            {"id": "4", "deadline": "invalid_date"},
+        ]
+        tasks = _to_tasks(raw_tasks)
+        self.assertIsNotNone(tasks[0].deadline)
+        self.assertIsNone(tasks[1].deadline)
+        self.assertIsNone(tasks[2].deadline)
+        self.assertIsNone(tasks[3].deadline)
+
 
 if __name__ == "__main__":
     unittest.main()

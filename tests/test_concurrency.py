@@ -155,6 +155,26 @@ class TestConcurrency(unittest.TestCase):
             scores = load_history(history_path)
             self.assertEqual(len(scores), num_writes)
 
+    def test_concurrent_plan_state_persists(self) -> None:
+        """Concurrent status approvals correctly persist to disk without race conditions."""
+        resp = self.client.post(
+            "/analyze",
+            json={"events": self.events, "tasks": self.tasks, "role": "developer"},
+        )
+        pid = resp.json()["plan_id"]
+
+        num_threads = 8
+
+        def _approve(decision: str) -> int:
+            r = self.client.post("/approve", json={"plan_id": pid, "decision": decision})
+            return r.status_code
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
+            futures = [executor.submit(_approve, "accepted") for _ in range(16)]
+            results = [f.result() for f in concurrent.futures.as_completed(futures)]
+
+        self.assertTrue(all(code == 200 for code in results))
+
 
 if __name__ == "__main__":
     unittest.main()

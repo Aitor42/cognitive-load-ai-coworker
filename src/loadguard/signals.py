@@ -45,8 +45,8 @@ def _to_epoch(value: Any) -> float:
         return value.timestamp()
     if isinstance(value, str):
         ts = value.strip()
-        # Replace trailing 'Z' with '+00:00' for fromisoformat compatibility.
-        if ts.endswith("Z"):
+        # Replace trailing 'Z' or 'z' with '+00:00' for fromisoformat compatibility.
+        if ts.endswith(("Z", "z")):
             ts = ts[:-1] + "+00:00"
         dt = datetime.fromisoformat(ts)
         if dt.tzinfo is None:

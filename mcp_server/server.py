@@ -56,6 +56,15 @@ def _parse_bool(val: Any, default: bool = True) -> bool:
     return bool(val)
 
 
+def _parse_task_deadline(val: Any) -> float | None:
+    if val is None or str(val).strip() == "":
+        return None
+    try:
+        return _to_epoch(val)
+    except (ValueError, TypeError):
+        return None
+
+
 def _to_tasks(payload: list[dict[str, Any]]) -> list[Task]:
     return [
         Task(
@@ -64,7 +73,7 @@ def _to_tasks(payload: list[dict[str, Any]]) -> list[Task]:
             priority=int(t.get("priority", 3)),
             duration_minutes=float(t.get("duration_minutes", 30.0)),
             focus_required=_parse_bool(t.get("focus_required"), True),
-            deadline=_to_epoch(t["deadline"]) if t.get("deadline") is not None else None,
+            deadline=_parse_task_deadline(t.get("deadline")),
             status=str(t.get("status", "todo")),
         )
         for i, t in enumerate(payload)

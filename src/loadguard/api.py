@@ -110,7 +110,9 @@ def _trim_plans() -> None:
 def _persist_plans() -> None:
     try:
         _DATA_DIR.mkdir(parents=True, exist_ok=True)
-        tmp = PLANS_PATH.with_suffix(f".tmp.{threading.get_ident()}")
+        tmp = PLANS_PATH.with_suffix(
+            f".tmp.{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}"
+        )
         tmp.write_text(json.dumps(PLANS), encoding="utf-8")
         tmp.replace(PLANS_PATH)
     except Exception as exc:

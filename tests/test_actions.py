@@ -16,6 +16,7 @@ from loadguard.actions import (  # noqa: E402
     clear_audit,
     export_ics,
     export_tasks_csv,
+    is_valid_transition,
     load_audit,
     record_approval,
 )
@@ -426,6 +427,26 @@ class TestAudit(unittest.TestCase):
             path = Path(tmp) / "audit.jsonl"
             path.write_text('# comment\n\n{"plan_id": "p1"}\n', encoding="utf-8")
             self.assertEqual(len(load_audit(path)), 1)
+
+
+class TestTransitions(unittest.TestCase):
+    def test_pending_transitions(self):
+        self.assertTrue(is_valid_transition("pending", "accepted"))
+        self.assertTrue(is_valid_transition("pending", "rejected"))
+        self.assertTrue(is_valid_transition("pending", "edited"))
+        self.assertFalse(is_valid_transition("pending", "unknown"))
+
+    def test_edited_transitions(self):
+        self.assertTrue(is_valid_transition("edited", "accepted"))
+        self.assertTrue(is_valid_transition("edited", "rejected"))
+        self.assertTrue(is_valid_transition("edited", "edited"))
+
+    def test_terminal_states_prevent_transition(self):
+        self.assertTrue(is_valid_transition("accepted", "accepted"))  # idempotent
+        self.assertFalse(is_valid_transition("accepted", "rejected"))
+        self.assertFalse(is_valid_transition("accepted", "edited"))
+        self.assertTrue(is_valid_transition("rejected", "rejected"))  # idempotent
+        self.assertFalse(is_valid_transition("rejected", "accepted"))
 
 
 if __name__ == "__main__":

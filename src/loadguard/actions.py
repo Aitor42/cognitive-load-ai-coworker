@@ -37,6 +37,21 @@ MINOR_STEP_MINUTES = 5.0
 
 APPROVAL_DECISIONS = ("accepted", "rejected", "edited")
 
+# State machine for human plan decisions. Terminal states cannot transition to other decisions.
+VALID_TRANSITIONS: dict[str, set[str]] = {
+    "pending": {"accepted", "rejected", "edited"},
+    "edited": {"accepted", "rejected", "edited"},
+    "accepted": set(),
+    "rejected": set(),
+}
+
+
+def is_valid_transition(current_status: str, target_decision: str) -> bool:
+    """Validate whether transitioning from current_status to target_decision is allowed."""
+    if current_status == target_decision:
+        return True
+    return target_decision in VALID_TRANSITIONS.get(current_status, set())
+
 
 def new_plan_id() -> str:
     return uuid.uuid4().hex[:12]

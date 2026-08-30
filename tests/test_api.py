@@ -190,6 +190,17 @@ class TestApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(PLANS[pid]["payload"]["plan"]["items"]), 2)
 
+    def test_approve_rejects_invalid_state_transition(self) -> None:
+        data = self._analyze()
+        pid = data["plan_id"]
+        # Accept plan (terminal state)
+        resp1 = self.client.post("/approve", json={"plan_id": pid, "decision": "accepted"})
+        self.assertEqual(resp1.status_code, 200)
+        # Attempt to reject an already accepted plan
+        resp2 = self.client.post("/approve", json={"plan_id": pid, "decision": "rejected"})
+        self.assertEqual(resp2.status_code, 400)
+        self.assertIn("Cannot transition plan", resp2.json()["detail"])
+
     def test_analyze_with_role_profile(self) -> None:
         sample = self.client.get("/sample").json()
         resp = self.client.post(

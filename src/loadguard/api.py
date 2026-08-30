@@ -26,6 +26,7 @@ from .actions import (
     clear_audit,
     export_ics,
     export_tasks_csv,
+    is_valid_transition,
     load_audit,
     new_plan_id,
     record_approval,
@@ -379,6 +380,13 @@ def approve(req: ApproveRequest) -> dict[str, Any]:
         stored = PLANS.get(req.plan_id)
         if stored is None:
             raise HTTPException(status_code=404, detail="unknown plan_id")
+        current_status = stored["payload"]["plan"].get("status", "pending")
+        decision = req.decision if req.decision in APPROVAL_DECISIONS else "rejected"
+        if not is_valid_transition(current_status, decision):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot transition plan {req.plan_id} from terminal status {current_status!r} to {decision!r}",
+            )
         if req.items is not None:
             # An edited plan replaces the stored items, but it must pass the same
             # safety gate as an original plan (no invented tasks, no critical

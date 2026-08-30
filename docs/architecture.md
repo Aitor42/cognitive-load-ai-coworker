@@ -218,14 +218,25 @@ checkpoint. The same node functions run sequentially when LangGraph is absent.
 
 ## LLM runtime
 
+`LLM_PROVIDER` accepts `heuristic` (default), `watsonx`, or `ollama`. The `heuristic` provider uses the dependency-free deterministic planner, heuristic note, and deterministic safety guard. The other providers add model-backed proposals, notes, and Guardian checks, while retaining deterministic fallbacks.
+
 `ChatModel` exposes three capabilities, each with a deterministic fallback:
 
 - `generate_note()` — narrative.
 - `propose_plan()` — structured decision proposal (JSON).
 - `guard_text()` — Granite Guardian-style safety check.
 
-Implementations: `HeuristicModel` (stdlib), `WatsonxModel` (IBM Granite via `langchain-ibm`),
-`OllamaModel` (local Granite via Ollama).
+Implementations: `HeuristicModel` (stdlib), `WatsonxModel` (IBM Granite through `langchain_ibm.ChatWatsonx`), and `OllamaModel` (local Granite through Ollama's `/api/generate` endpoint).
+
+Configuration defaults from `config.py`:
+
+| Provider | Main model | Guardian model |
+| --- | --- | --- |
+| `heuristic` | No external model | Deterministic guard |
+| `watsonx` | `ibm/granite-3-8b-instruct` | `ibm/granite-guardian-3-8b` |
+| `ollama` | `granite3.1-dense:8b` | `ibm-granite/granite-guardian:3.1-8b` |
+
+Override the model IDs with `WATSONX_MODEL_ID`, `WATSONX_GUARDIAN_MODEL_ID`, `OLLAMA_MODEL`, and `OLLAMA_GUARDIAN_MODEL`. `WATSONX_API_KEY` and `WATSONX_PROJECT_ID` are required by the watsonx integration; `WATSONX_URL` defaults to `https://us-south.ml.cloud.ibm.com`; `OLLAMA_URL` defaults to `http://localhost:11434`.
 
 ```bash
 cp .env.example .env

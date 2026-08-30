@@ -285,7 +285,9 @@ Then visit <http://127.0.0.1:8000/>. The container installs the API, LLM, and MC
 
 ## 🧠 Optional Granite models
 
-By default `LLM_PROVIDER=heuristic`; the deterministic engine is always available. To configure a provider:
+By default `LLM_PROVIDER=heuristic`, which uses the dependency-free deterministic planner, heuristic note, and deterministic safety guard. Set `LLM_PROVIDER=watsonx` or `LLM_PROVIDER=ollama` to enable the remote/local model-backed proposal, note, and Guardian checks; all model calls retain deterministic fallbacks.
+
+To configure a provider:
 
 ```bash
 cp .env.example .env
@@ -295,7 +297,7 @@ The application reads configuration from process environment variables. Copy `.e
 
 ### Local Granite with Ollama
 
-Start Ollama, install the model, and select the provider:
+The application calls Ollama's `/api/generate` endpoint. Start Ollama, install the exact default model, and select the provider:
 
 ```bash
 ollama serve
@@ -307,7 +309,7 @@ export OLLAMA_MODEL=granite3.1-dense:8b
 
 ### Granite through watsonx
 
-Set the provider and required credentials:
+`WatsonxModel` uses `langchain_ibm.ChatWatsonx`. Set the provider and required credentials:
 
 ```bash
 export LLM_PROVIDER=watsonx
@@ -317,7 +319,7 @@ export WATSONX_URL=https://us-south.ml.cloud.ibm.com
 export WATSONX_MODEL_ID=ibm/granite-3-8b-instruct
 ```
 
-`WATSONX_GUARDIAN_MODEL_ID` and `OLLAMA_GUARDIAN_MODEL` can select separate Guardian models. Never commit `.env` or API keys.
+The exact defaults used by `src/loadguard/config.py` are `ibm/granite-3-8b-instruct` for watsonx, `ibm/granite-guardian-3-8b` for the watsonx Guardian, `granite3.1-dense:8b` for Ollama, and `ibm-granite/granite-guardian:3.1-8b` for the Ollama Guardian. Override them with `WATSONX_MODEL_ID`, `WATSONX_GUARDIAN_MODEL_ID`, `OLLAMA_MODEL`, and `OLLAMA_GUARDIAN_MODEL`. Never commit `.env` or API keys.
 
 ---
 

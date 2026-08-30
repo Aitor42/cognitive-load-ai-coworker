@@ -269,6 +269,33 @@ class TestBuildPlan(unittest.TestCase):
         do_items = [i for i in plan.items if i.action == "do"]
         self.assertIn("p2", [i.task_id for i in do_items])
 
+    def test_timezone_aware_late_day_detection(self) -> None:
+        """Timezone resolves local hour from epoch now correctly."""
+        tasks = [Task(id="p2", title="Task p2", priority=2)]
+        report = score(
+            FeatureSet(
+                context_switches_per_hour=15.0,
+                meeting_ratio=0.5,
+                notification_rate=20.0,
+                focus_ratio=0.0,
+            )
+        )
+        # 14:13:20 UTC: 09:13 in NY (not late), 23:13 in Tokyo (late day)
+        utc_14_13 = 1699971200.0
+        plan_ny = build_plan(tasks, report, now=utc_14_13, tz_name="America/New_York")
+        p2_ny = [i for i in plan_ny.items if i.task_id == "p2"][0]
+        self.assertEqual(p2_ny.action, "do")
+
+        plan_tokyo = build_plan(tasks, report, now=utc_14_13, tz_name="Asia/Tokyo")
+        p2_tokyo = [i for i in plan_tokyo.items if i.task_id == "p2"][0]
+        self.assertEqual(p2_tokyo.action, "delegate")
+        self.assertIn("late-day protection", p2_tokyo.rationale)
+
+        # Invalid timezone falls back to UTC (14:13 -> not late)
+        plan_inv = build_plan(tasks, report, now=utc_14_13, tz_name="Invalid/Timezone")
+        p2_inv = [i for i in plan_inv.items if i.task_id == "p2"][0]
+        self.assertEqual(p2_inv.action, "do")
+
 
 if __name__ == "__main__":
     unittest.main()

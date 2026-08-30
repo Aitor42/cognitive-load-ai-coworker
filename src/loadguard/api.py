@@ -295,6 +295,7 @@ def analyze(req: AnalyzeRequest) -> dict[str, Any]:
         approval=req.approval,
         guardian_model=get_guardian_model(),
         workers=workers,
+        tz_name=req.tz_name,
     )
     return _store_plan(
         result,

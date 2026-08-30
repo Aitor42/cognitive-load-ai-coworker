@@ -53,6 +53,7 @@ class WorkloadPlannerAgent:
         now: float | None = None,
         audit_history: list[dict] | None = None,
         hour_of_day: float | None = None,
+        tz_name: str | None = None,
     ) -> Plan:
         return build_plan(
             tasks,
@@ -61,6 +62,7 @@ class WorkloadPlannerAgent:
             now=now,
             audit_history=audit_history,
             hour_of_day=hour_of_day,
+            tz_name=tz_name,
         )
 
 

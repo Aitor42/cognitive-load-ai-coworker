@@ -66,6 +66,7 @@ def run_workflow(
     role: str | None = None,
     weights: dict[str, float] | None = None,
     hour_of_day: float | None = None,
+    tz_name: str | None = None,
 ) -> WorkflowResult:
     """Run the full sense -> diagnose -> plan -> validate -> approve -> impact pipeline."""
     features = SignalAnalystAgent().run(events, window_minutes)
@@ -82,6 +83,7 @@ def run_workflow(
         now=now,
         audit_history=audit_history,
         hour_of_day=hour_of_day,
+        tz_name=tz_name,
     )
     base_plan.plan_id = plan_id or new_plan_id()
 

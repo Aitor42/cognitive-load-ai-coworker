@@ -66,6 +66,7 @@ class WorkflowState(TypedDict, total=False):
     now: float | None
     audit_history: list[dict] | None
     hour_of_day: float | None
+    tz_name: str | None
 
 
 # ---------------------------------------------------------------------------
@@ -106,6 +107,7 @@ def granite_plan(state: Mapping[str, Any]) -> dict[str, Any]:
         now=state.get("now"),
         audit_history=state.get("audit_history"),
         hour_of_day=state.get("hour_of_day"),
+        tz_name=state.get("tz_name"),
     )
     base_plan.plan_id = state.get("plan_id") or new_plan_id()
     model = state.get("model")
@@ -262,6 +264,7 @@ def run_graph(
     now: float | None = None,
     audit_history: list[dict] | None = None,
     hour_of_day: float | None = None,
+    tz_name: str | None = None,
 ) -> dict[str, Any]:
     """Run the graph, using LangGraph when available (or force sequential)."""
     state: WorkflowState = {
@@ -280,6 +283,7 @@ def run_graph(
         "now": now,
         "audit_history": audit_history,
         "hour_of_day": hour_of_day,
+        "tz_name": tz_name,
     }
     if sequential or not langgraph_installed():
         return run_sequential_graph(state)

@@ -15,6 +15,8 @@ Integrates:
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .availability import is_absent
 from .models import HIGH, OVERLOAD, TODO, LoadReport, Plan, PlanItem, Task, Worker
@@ -84,6 +86,7 @@ def build_plan(
     now: float | None = None,
     audit_history: list[dict] | None = None,
     hour_of_day: float | None = None,
+    tz_name: str | None = None,
 ) -> Plan:
     """Build a resequenced plan (structure only) from tasks and a load report.
 
@@ -92,13 +95,20 @@ def build_plan(
     - ``now``: Current epoch timestamp (used for absence checks and hour determination).
     - ``audit_history``: Past approval/rejection records for closed-loop learning.
     - ``hour_of_day``: Float 0..24 representing time of day for fatigue/urgency adjustments.
+    - ``tz_name``: Optional IANA timezone string (e.g. "Europe/Madrid") for local time resolution.
     """
     level = load_report.level
     ordered = sorted(tasks, key=lambda t: _sort_key(t, level))
 
     # Time-of-day awareness: determine hour if not explicitly provided
     if hour_of_day is None and now is not None:
-        hour_of_day = float(datetime.fromtimestamp(now, tz=timezone.utc).hour)
+        tz: Any = timezone.utc
+        if tz_name:
+            try:
+                tz = ZoneInfo(tz_name)
+            except (ZoneInfoNotFoundError, ValueError, OSError):
+                tz = timezone.utc
+        hour_of_day = float(datetime.fromtimestamp(now, tz=tz).hour)
 
     is_late_day = hour_of_day is not None and hour_of_day >= 16.0
     delegate_max = DELEGATE_MAX_PRIORITY.get(level, 0)

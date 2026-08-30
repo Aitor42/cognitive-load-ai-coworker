@@ -241,6 +241,9 @@ class TestApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         plan_items = PLANS[pid]["payload"]["plan"]["items"]
         self.assertEqual(plan_items[0]["title"], "Write incident postmortem - Urgent Draft")
+        # Source task in stored['tasks'] must remain strictly immutable
+        stored_task = [t for t in PLANS[pid]["tasks"] if t["id"] == "t1"][0]
+        self.assertEqual(stored_task["title"], "Write incident postmortem")
 
     def test_edit_plan_recomputes_impact(self) -> None:
         """Saving an edited plan must return a fresh before/after projection."""

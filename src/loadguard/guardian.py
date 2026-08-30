@@ -146,7 +146,9 @@ def _scan_medical(text: str) -> GuardCheck:
     )
 
 
-def _structure_checks(plan: Plan, tasks: list[Task]) -> list[GuardCheck]:
+def _structure_checks(
+    plan: Plan, tasks: list[Task], allow_custom_titles: bool = False
+) -> list[GuardCheck]:
     checks: list[GuardCheck] = []
     known_ids = {t.id for t in tasks}
     critical = {t.id for t in tasks if t.priority >= CRITICAL_PRIORITY}
@@ -188,17 +190,22 @@ def _structure_checks(plan: Plan, tasks: list[Task]) -> list[GuardCheck]:
     )
 
     # Titles for task-bound items match the source task (no invented data).
-    title_map = {t.id: t.title for t in tasks}
-    mismatched = [
-        i.task_id for i in plan.items if i.task_id in title_map and i.title != title_map[i.task_id]
-    ]
-    checks.append(
-        GuardCheck(
-            "no_invented_data",
-            passed=not mismatched,
-            detail=f"title mismatches: {mismatched}" if mismatched else "titles match source tasks",
+    if not allow_custom_titles:
+        title_map = {t.id: t.title for t in tasks}
+        mismatched = [
+            i.task_id
+            for i in plan.items
+            if i.task_id in title_map and i.title != title_map[i.task_id]
+        ]
+        checks.append(
+            GuardCheck(
+                "no_invented_data",
+                passed=not mismatched,
+                detail=f"title mismatches: {mismatched}"
+                if mismatched
+                else "titles match source tasks",
+            )
         )
-    )
     return checks
 
 
@@ -212,9 +219,13 @@ def _narrative_checks(note: str) -> list[GuardCheck]:
     return checks
 
 
-def run_deterministic_checks(plan: Plan, tasks: list[Task], note: str) -> list[GuardCheck]:
+def run_deterministic_checks(
+    plan: Plan, tasks: list[Task], note: str, allow_custom_titles: bool = False
+) -> list[GuardCheck]:
     """Run the always-on structural + narrative checks."""
-    return _structure_checks(plan, tasks) + _narrative_checks(note)
+    return _structure_checks(
+        plan, tasks, allow_custom_titles=allow_custom_titles
+    ) + _narrative_checks(note)
 
 
 def run_llm_guard(model: ChatModel | None, note: str) -> GuardCheck | None:
@@ -233,10 +244,14 @@ def run_llm_guard(model: ChatModel | None, note: str) -> GuardCheck | None:
 
 
 def validate_plan(
-    plan: Plan, tasks: list[Task], note: str, model: ChatModel | None = None
+    plan: Plan,
+    tasks: list[Task],
+    note: str,
+    model: ChatModel | None = None,
+    allow_custom_titles: bool = False,
 ) -> GuardianResult:
     """Validate a plan + narrative, combining deterministic and LLM checks."""
-    checks = run_deterministic_checks(plan, tasks, note)
+    checks = run_deterministic_checks(plan, tasks, note, allow_custom_titles=allow_custom_titles)
     engine = "deterministic"
     llm_check = run_llm_guard(model, note)
     if llm_check is not None:

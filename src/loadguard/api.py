@@ -390,16 +390,8 @@ def approve(req: ApproveRequest) -> dict[str, Any]:
         if req.items is not None:
             # An edited plan replaces the stored items, but it must pass the same
             # safety gate as an original plan (no invented tasks, no critical
-            # delegation, valid actions).
+            # delegation, valid actions). Stored tasks remain strictly immutable.
             task_title_map = {t.get("id"): t.get("title", "") for t in stored.get("tasks", [])}
-            for item in req.items:
-                tid = item.get("task_id")
-                if tid and item.get("title"):
-                    for t in stored.get("tasks", []):
-                        if t.get("id") == tid:
-                            t["title"] = item["title"]
-                            task_title_map[tid] = item["title"]
-
             cleaned = [
                 {
                     "position": i + 1,
@@ -409,6 +401,8 @@ def approve(req: ApproveRequest) -> dict[str, Any]:
                     or task_title_map.get(item.get("task_id"))
                     or item["action"],
                     "rationale": item.get("rationale", ""),
+                    "suggested_assignees": item.get("suggested_assignees", []),
+                    "delegate_to": item.get("delegate_to"),
                 }
                 for i, item in enumerate(req.items)
                 if item.get("action") in ("do", "delegate", "focus_block", "break", "batch")
@@ -421,10 +415,17 @@ def approve(req: ApproveRequest) -> dict[str, Any]:
                     task_id=c["task_id"],
                     title=c["title"],
                     rationale=c["rationale"],
+                    suggested_assignees=c.get("suggested_assignees", []),
+                    delegate_to=c.get("delegate_to"),
                 )
                 for c in cleaned
             ]
-            guard = validate_plan(plan, _to_tasks(stored["tasks"]), plan.note)
+            guard = validate_plan(
+                plan,
+                _to_tasks(stored["tasks"]),
+                plan.note,
+                allow_custom_titles=True,
+            )
             if not guard.passed:
                 raise HTTPException(
                     status_code=400,

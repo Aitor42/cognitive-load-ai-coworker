@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import time
 
-from .models import TODO, VACATION, Absence, ReassignmentAlert, Task, Worker
+from .models import LEAVE, TODO, VACATION, Absence, ReassignmentAlert, Task, Worker
 
-KIND_LABELS = {VACATION: "vacation", "leave": "leave"}
+KIND_LABELS = {VACATION: "vacation", LEAVE: "leave"}
 
 
 def is_absent(absences: list[Absence], at: float) -> Absence | None:

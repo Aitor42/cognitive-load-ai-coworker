@@ -511,7 +511,8 @@ class TestRoleProfilesAndCustomWeights(unittest.TestCase):
 
         f = FeatureSet(notification_rate=20.0, focus_ratio=1.0)
         rep_static = score(f)
-        # High personal baseline mean (75) increases notification midpoint scale -> lower score contribution for same rate
+        # High personal baseline mean (75) increases notification midpoint scale ->
+        # lower score contribution for same rate
         high_baseline = PersonalBaseline(mean=75.0, std=5.0, n=5)
         rep_adaptive = score(f, baseline=high_baseline)
         self.assertLess(rep_adaptive.score, rep_static.score)

@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
@@ -42,12 +42,12 @@ class TestToEpoch(unittest.TestCase):
 
     def test_naive_datetime_assumes_utc(self) -> None:
         naive = datetime(2026, 8, 17, 9, 0, 0)
-        self.assertEqual(_to_epoch(naive), naive.replace(tzinfo=timezone.utc).timestamp())
+        self.assertEqual(_to_epoch(naive), naive.replace(tzinfo=UTC).timestamp())
 
     def test_naive_iso_string_assumes_utc(self) -> None:
         self.assertEqual(
             _to_epoch("2026-08-17T09:00:00"),
-            datetime(2026, 8, 17, 9, 0, 0, tzinfo=timezone.utc).timestamp(),
+            datetime(2026, 8, 17, 9, 0, 0, tzinfo=UTC).timestamp(),
         )
 
     def test_rejects_unparseable_value(self) -> None:
@@ -62,7 +62,7 @@ class TestParseEvent(unittest.TestCase):
         self.assertGreater(e.timestamp, 0)
 
     def test_parse_datetime_object(self) -> None:
-        dt = datetime(2026, 8, 17, 9, 0, 0, tzinfo=timezone.utc)
+        dt = datetime(2026, 8, 17, 9, 0, 0, tzinfo=UTC)
         e = parse_event({"timestamp": dt, "kind": "meeting"})
         self.assertEqual(e.kind, MEETING)
         self.assertEqual(e.timestamp, dt.timestamp())

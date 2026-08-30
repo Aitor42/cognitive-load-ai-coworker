@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -34,11 +34,11 @@ class TestCalendarParser(unittest.TestCase):
     def test_parse_ics_datetime_variants(self):
         # UTC with Z
         ts = _parse_ics_datetime("20260817T090000Z")
-        self.assertEqual(ts, datetime(2026, 8, 17, 9, 0, tzinfo=timezone.utc).timestamp())
+        self.assertEqual(ts, datetime(2026, 8, 17, 9, 0, tzinfo=UTC).timestamp())
 
         # With explicit offset
         ts2 = _parse_ics_datetime("20260817T090000+0200")
-        self.assertEqual(ts2, datetime(2026, 8, 17, 7, 0, tzinfo=timezone.utc).timestamp())
+        self.assertEqual(ts2, datetime(2026, 8, 17, 7, 0, tzinfo=UTC).timestamp())
 
         # With IANA timezone
         ts3 = _parse_ics_datetime("20260817T090000", "Europe/Madrid")
@@ -54,7 +54,7 @@ class TestCalendarParser(unittest.TestCase):
 
         # With unresolvable timezone fallback
         ts5 = _parse_ics_datetime("20260817T090000", "NonExistentZone/Unknown")
-        self.assertEqual(ts5, datetime(2026, 8, 17, 9, 0, tzinfo=timezone.utc).timestamp())
+        self.assertEqual(ts5, datetime(2026, 8, 17, 9, 0, tzinfo=UTC).timestamp())
 
         # Invalid datetime format raises ValueError
         with self.assertRaises(ValueError):
@@ -63,31 +63,31 @@ class TestCalendarParser(unittest.TestCase):
         # Without tzid
         self.assertEqual(
             _parse_ics_datetime("20260817T090000", None),
-            datetime(2026, 8, 17, 9, 0, tzinfo=timezone.utc).timestamp(),
+            datetime(2026, 8, 17, 9, 0, tzinfo=UTC).timestamp(),
         )
 
     def test_parse_ics_date_or_datetime(self):
         self.assertEqual(
             _parse_ics_date_or_datetime("20260817"),
-            datetime(2026, 8, 17, 0, 0, tzinfo=timezone.utc).timestamp(),
+            datetime(2026, 8, 17, 0, 0, tzinfo=UTC).timestamp(),
         )
         self.assertEqual(
             _parse_ics_date_or_datetime("20260817T090000Z"),
-            datetime(2026, 8, 17, 9, 0, tzinfo=timezone.utc).timestamp(),
+            datetime(2026, 8, 17, 9, 0, tzinfo=UTC).timestamp(),
         )
 
     def test_parse_iso(self):
         self.assertEqual(
             _parse_iso("2026-08-17T09:00:00Z"),
-            datetime(2026, 8, 17, 9, 0, tzinfo=timezone.utc).timestamp(),
+            datetime(2026, 8, 17, 9, 0, tzinfo=UTC).timestamp(),
         )
         self.assertEqual(
             _parse_iso("2026-08-17T09:00:00+02:00"),
-            datetime(2026, 8, 17, 7, 0, tzinfo=timezone.utc).timestamp(),
+            datetime(2026, 8, 17, 7, 0, tzinfo=UTC).timestamp(),
         )
         self.assertEqual(
             _parse_iso("2026-08-17T09:00:00"),
-            datetime(2026, 8, 17, 9, 0, tzinfo=timezone.utc).timestamp(),
+            datetime(2026, 8, 17, 9, 0, tzinfo=UTC).timestamp(),
         )
 
     def test_parse_duration(self):
@@ -177,7 +177,7 @@ class TestCalendarParser(unittest.TestCase):
         self.assertEqual(end_allday, start + 86400.0 - 1.0)
 
     def test_rrule_expansion_edge_cases(self):
-        start = datetime(2026, 1, 1, 9, 0, tzinfo=timezone.utc).timestamp()
+        start = datetime(2026, 1, 1, 9, 0, tzinfo=UTC).timestamp()
 
         # Unknown freq
         self.assertEqual(_expand_rrule(start, {"FREQ": "MINUTELY"}), [start])
@@ -220,7 +220,7 @@ class TestCalendarParser(unittest.TestCase):
         self.assertEqual(len(res_yearly_until), 2)
 
         # YEARLY leap day Feb 29
-        leap_start = datetime(2024, 2, 29, 9, 0, tzinfo=timezone.utc).timestamp()
+        leap_start = datetime(2024, 2, 29, 9, 0, tzinfo=UTC).timestamp()
         res_leap = _expand_rrule(leap_start, {"FREQ": "YEARLY", "COUNT": "3"})
         self.assertEqual(len(res_leap), 3)
 

@@ -64,7 +64,7 @@ def run_benchmark(
     after = result.impact.after_score
     delta = round(before.score - after, 1)
 
-    signal_counts = {k: 0 for k in (CONTEXT_SWITCH, MEETING, NOTIFICATION, FOCUS_BLOCK)}
+    signal_counts = dict.fromkeys((CONTEXT_SWITCH, MEETING, NOTIFICATION, FOCUS_BLOCK), 0)
     for e in events:
         if e.kind in signal_counts:
             signal_counts[e.kind] += 1
@@ -117,7 +117,7 @@ def _estimate_eliminated(
         # Each delegated task reduces context switches by 10% (geometric).
         switches_total = features.context_switches_per_hour * window_hours
         eliminated += switches_total * (1.0 - (0.9**delegated))
-    return int(round(eliminated))
+    return round(eliminated)
 
 
 # ---------------------------------------------------------------------------

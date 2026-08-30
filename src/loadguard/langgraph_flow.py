@@ -74,7 +74,7 @@ class WorkflowState(TypedDict, total=False):
 # ---------------------------------------------------------------------------
 
 
-def collect_signals(state: Mapping[str, Any]) -> dict[str, Any]:
+def collect_signals(_state: Mapping[str, Any]) -> dict[str, Any]:
     """Entry point: events and tasks are already parsed by the caller."""
     return {"status": "signals_collected"}
 

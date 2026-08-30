@@ -94,7 +94,8 @@ def _load_persisted_plans() -> dict[str, dict[str, Any]]:
     return {}
 
 
-# Plan store (persisted in .loadguard/plans.json): plan_id -> {"payload": ..., "tasks": [...], "events": [...]}
+# Plan store (persisted in .loadguard/plans.json):
+# plan_id -> {"payload": ..., "tasks": [...], "events": [...]}
 MAX_PERSISTED_PLANS = 100
 PLANS: dict[str, dict[str, Any]] = _load_persisted_plans()
 _PLANS_LOCK = threading.Lock()
@@ -469,7 +470,10 @@ def approve(req: ApproveRequest) -> dict[str, Any]:
         if not is_valid_transition(current_status, decision):
             raise HTTPException(
                 status_code=400,
-                detail=f"Cannot transition plan {req.plan_id} from terminal status {current_status!r} to {decision!r}",
+                detail=(
+                    f"Cannot transition plan {req.plan_id} from terminal status "
+                    f"{current_status!r} to {decision!r}"
+                ),
             )
         if req.items is not None:
             # An edited plan replaces the stored items, but it must pass the same

@@ -210,13 +210,12 @@ def _structure_checks(
 
 
 def _narrative_checks(note: str) -> list[GuardCheck]:
-    checks = [
+    return [
         _scan_medical(note),
         _scan(note, RESPECT_VIOLATIONS, "respectful_language"),
         _scan_regex(note, SENSITIVE_PATTERNS, "no_sensitive_data"),
         _scan(note, OUT_OF_SCOPE_PHRASES, "in_scope"),
     ]
-    return checks
 
 
 def run_deterministic_checks(

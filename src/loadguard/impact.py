@@ -123,7 +123,10 @@ def estimate_impact(
         delta=round(before.score - after.score, 1),
         assumptions={
             "batch": f"notification rate x{NOTIFICATION_REDUCTION}",
-            "focus_block": f"+{FOCUS_GAIN_PER_BLOCK} focus share each (position-adjusted, fragmentation shielded)",
+            "focus_block": (
+                f"+{FOCUS_GAIN_PER_BLOCK} focus share each "
+                "(position-adjusted, fragmentation shielded)"
+            ),
             "break": f"multitasking x{1 - MULTITASK_REDUCTION}",
             "delegate": f"context switches x{1 - CONTEXT_REDUCTION_PER_DELEGATION} each",
             "calibration": f"{cal:.2f} (from {len(history) if history else 0} history points)",

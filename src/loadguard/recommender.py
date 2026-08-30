@@ -166,7 +166,10 @@ def build_plan(
                     "hand off to protect attention."
                 )
             else:
-                rationale = f"Priority {task.priority}/5 and load is {level}; hand off to protect attention."
+                rationale = (
+                    f"Priority {task.priority}/5 and load is {level}; "
+                    "hand off to protect attention."
+                )
             # Suggest available teammates when worker information is provided.
             suggested: list[str] = []
             if workers is not None:

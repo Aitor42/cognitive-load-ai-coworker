@@ -20,10 +20,13 @@ decides.**
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 
 from .llm import ChatModel, HeuristicModel
 from .models import TODO, FeatureSet, LoadReport, Plan, PlanItem, Task, Worker
+
+logger = logging.getLogger(__name__)
 
 ALLOWED_INSERT_ACTIONS = {"focus_block", "break"}
 # Tasks with priority >= this value are critical and can never be delegated.
@@ -100,7 +103,7 @@ def parse_proposal(raw_text: str | None) -> DecisionProposal | None:
 
 
 def validate_proposal(
-    proposal: DecisionProposal, tasks: list[Task], load_report: LoadReport
+    proposal: DecisionProposal, tasks: list[Task], _load_report: LoadReport | None = None
 ) -> ProposalValidation:
     """Deterministic safety gate: reject anything that is unsafe or invented."""
     reasons: list[str] = []
@@ -165,11 +168,7 @@ class GraniteDecisionAgent:
             return None
         validation = validate_proposal(proposal, tasks, load_report)
         if not validation.valid:
-            import logging
-
-            logging.getLogger(__name__).info(
-                "Granite proposal rejected by deterministic gate: %s", validation.reasons
-            )
+            logger.info("Granite proposal rejected by deterministic gate: %s", validation.reasons)
             return None
         return proposal
 

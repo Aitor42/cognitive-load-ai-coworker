@@ -41,7 +41,9 @@ Respond with JSON ONLY. No markdown, no commentary:
 {{
   "priority_task_id": "<id of the task to do first, or null>",
   "delegate_task_ids": ["<ids of low-priority tasks to delegate>"],
-  "inserts": [{{"action": "focus_block" or "break", "after_task_id": "<task id, or null for the start>"}}],
+  "inserts": [
+    {{"action": "focus_block" or "break", "after_task_id": "<task id, or null for start>"}}
+  ],
   "rationale": "<2-3 sentence plain explanation>"
 }}
 

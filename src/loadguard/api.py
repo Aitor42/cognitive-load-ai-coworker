@@ -11,6 +11,7 @@ privacy endpoint describing exactly what is captured.
 from __future__ import annotations
 
 import json
+import threading
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Optional
@@ -66,6 +67,7 @@ def _load_persisted_plans() -> dict[str, dict[str, Any]]:
 # Plan store (persisted in .loadguard/plans.json): plan_id -> {"payload": ..., "tasks": [...], "events": [...]}
 MAX_PERSISTED_PLANS = 100
 PLANS: dict[str, dict[str, Any]] = _load_persisted_plans()
+_PLANS_LOCK = threading.Lock()
 
 
 def _trim_plans() -> None:
@@ -77,7 +79,7 @@ def _trim_plans() -> None:
 def _persist_plans() -> None:
     try:
         _DATA_DIR.mkdir(parents=True, exist_ok=True)
-        tmp = PLANS_PATH.with_suffix(".tmp")
+        tmp = PLANS_PATH.with_suffix(f".tmp.{threading.get_ident()}")
         tmp.write_text(json.dumps(PLANS), encoding="utf-8")
         tmp.replace(PLANS_PATH)
     except Exception:
@@ -215,16 +217,17 @@ def _store_plan(
     """
     payload = asdict(result)
     plan_id = result.plan.plan_id
-    PLANS[plan_id] = {
-        "payload": payload,
-        "tasks": [asdict(t) for t in tasks],
-        "events": events,
-        "workers": [asdict(w) for w in workers] if workers else [],
-        "alarm_minutes": FOCUS_ALARM_MINUTES if alarm_minutes is None else alarm_minutes,
-        "tz_name": tz_name,
-    }
-    _trim_plans()
-    _persist_plans()
+    with _PLANS_LOCK:
+        PLANS[plan_id] = {
+            "payload": payload,
+            "tasks": [asdict(t) for t in tasks],
+            "events": events,
+            "workers": [asdict(w) for w in workers] if workers else [],
+            "alarm_minutes": FOCUS_ALARM_MINUTES if alarm_minutes is None else alarm_minutes,
+            "tz_name": tz_name,
+        }
+        _trim_plans()
+        _persist_plans()
     payload["plan_id"] = plan_id
     return payload
 
@@ -352,128 +355,134 @@ def midday(req: MiddayRequest) -> dict[str, Any]:
         review.plan.plan_id = review.plan.plan_id or new_plan_id()
         plan_id = review.plan.plan_id
         alarm = FOCUS_ALARM_MINUTES if req.alarm_minutes is None else req.alarm_minutes
-        PLANS[plan_id] = {
-            "payload": {
-                "load_report": asdict(review.plan.load_report),
-                "plan": asdict(review.plan),
-            },
-            "tasks": [asdict(t) for t in tasks],
-            "events": [asdict(e) for e in events],
-            "workers": [asdict(w) for w in workers],
-            "alarm_minutes": alarm,
-            "tz_name": req.tz_name,
-        }
-        _trim_plans()
-        _persist_plans()
+        with _PLANS_LOCK:
+            PLANS[plan_id] = {
+                "payload": {
+                    "load_report": asdict(review.plan.load_report),
+                    "plan": asdict(review.plan),
+                },
+                "tasks": [asdict(t) for t in tasks],
+                "events": [asdict(e) for e in events],
+                "workers": [asdict(w) for w in workers],
+                "alarm_minutes": alarm,
+                "tz_name": req.tz_name,
+            }
+            _trim_plans()
+            _persist_plans()
         result["plan_id"] = plan_id
     return result
 
 
 @app.post("/approve")
 def approve(req: ApproveRequest) -> dict[str, Any]:
-    stored = PLANS.get(req.plan_id)
-    if stored is None:
-        raise HTTPException(status_code=404, detail="unknown plan_id")
-    if req.items is not None:
-        # An edited plan replaces the stored items, but it must pass the same
-        # safety gate as an original plan (no invented tasks, no critical
-        # delegation, valid actions).
-        task_title_map = {t.get("id"): t.get("title", "") for t in stored.get("tasks", [])}
-        for item in req.items:
-            tid = item.get("task_id")
-            if tid and item.get("title"):
-                for t in stored.get("tasks", []):
-                    if t.get("id") == tid:
-                        t["title"] = item["title"]
-                        task_title_map[tid] = item["title"]
+    with _PLANS_LOCK:
+        stored = PLANS.get(req.plan_id)
+        if stored is None:
+            raise HTTPException(status_code=404, detail="unknown plan_id")
+        if req.items is not None:
+            # An edited plan replaces the stored items, but it must pass the same
+            # safety gate as an original plan (no invented tasks, no critical
+            # delegation, valid actions).
+            task_title_map = {t.get("id"): t.get("title", "") for t in stored.get("tasks", [])}
+            for item in req.items:
+                tid = item.get("task_id")
+                if tid and item.get("title"):
+                    for t in stored.get("tasks", []):
+                        if t.get("id") == tid:
+                            t["title"] = item["title"]
+                            task_title_map[tid] = item["title"]
 
-        cleaned = [
-            {
-                "position": i + 1,
-                "action": item["action"],
-                "task_id": item.get("task_id"),
-                "title": item.get("title")
-                or task_title_map.get(item.get("task_id"))
-                or item["action"],
-                "rationale": item.get("rationale", ""),
-            }
-            for i, item in enumerate(req.items)
-            if item.get("action") in ("do", "delegate", "focus_block", "break", "batch")
-        ]
-        plan = _plan_from_payload(stored["payload"])
-        plan.items = [
-            PlanItem(
-                position=c["position"],
-                action=c["action"],
-                task_id=c["task_id"],
-                title=c["title"],
-                rationale=c["rationale"],
-            )
-            for c in cleaned
-        ]
-        guard = validate_plan(plan, _to_tasks(stored["tasks"]), plan.note)
-        if not guard.passed:
-            raise HTTPException(
-                status_code=400,
-                detail=f"edited plan failed the safety gate: {guard.summary()}",
-            )
-        stored["payload"]["plan"]["items"] = cleaned
-        _persist_plans()
-    impact: dict[str, Any] | None = None
-    if req.items is not None:
-        # The edited plan changes what will actually be applied, so the
-        # projected before/after score must be recomputed from the stored
-        # signals rather than showing the original (stale) estimate.
-        features = compute_features([parse_event(e) for e in stored["events"]])
-        impact = asdict(estimate_impact(features, plan))
-    decision = req.decision if req.decision in APPROVAL_DECISIONS else "rejected"
-    record = record_approval(
-        req.plan_id,
-        decision,
-        feedback=req.feedback,
-        helpful=req.helpful or "",
-        path=AUDIT_PATH,
-    )
-    stored["payload"]["plan"]["status"] = decision
-    return {
-        "plan_id": req.plan_id,
-        "status": decision,
-        "audit": record.__dict__,
-        "impact": impact,
-    }
+            cleaned = [
+                {
+                    "position": i + 1,
+                    "action": item["action"],
+                    "task_id": item.get("task_id"),
+                    "title": item.get("title")
+                    or task_title_map.get(item.get("task_id"))
+                    or item["action"],
+                    "rationale": item.get("rationale", ""),
+                }
+                for i, item in enumerate(req.items)
+                if item.get("action") in ("do", "delegate", "focus_block", "break", "batch")
+            ]
+            plan = _plan_from_payload(stored["payload"])
+            plan.items = [
+                PlanItem(
+                    position=c["position"],
+                    action=c["action"],
+                    task_id=c["task_id"],
+                    title=c["title"],
+                    rationale=c["rationale"],
+                )
+                for c in cleaned
+            ]
+            guard = validate_plan(plan, _to_tasks(stored["tasks"]), plan.note)
+            if not guard.passed:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"edited plan failed the safety gate: {guard.summary()}",
+                )
+            stored["payload"]["plan"]["items"] = cleaned
+            _persist_plans()
+        impact: dict[str, Any] | None = None
+        if req.items is not None:
+            # The edited plan changes what will actually be applied, so the
+            # projected before/after score must be recomputed from the stored
+            # signals rather than showing the original (stale) estimate.
+            features = compute_features([parse_event(e) for e in stored["events"]])
+            impact = asdict(estimate_impact(features, plan))
+        decision = req.decision if req.decision in APPROVAL_DECISIONS else "rejected"
+        record = record_approval(
+            req.plan_id,
+            decision,
+            feedback=req.feedback,
+            helpful=req.helpful or "",
+            path=AUDIT_PATH,
+        )
+        stored["payload"]["plan"]["status"] = decision
+        return {
+            "plan_id": req.plan_id,
+            "status": decision,
+            "audit": record.__dict__,
+            "impact": impact,
+        }
 
 
 @app.post("/feedback")
 def feedback(req: FeedbackRequest) -> dict[str, Any]:
-    stored = PLANS.get(req.plan_id)
-    if stored is None:
-        raise HTTPException(status_code=404, detail="unknown plan_id")
-    record = record_approval(
-        req.plan_id,
-        stored["payload"]["plan"].get("status", "pending"),
-        feedback=req.feedback,
-        helpful=req.helpful or "",
-        path=AUDIT_PATH,
-    )
-    return {"plan_id": req.plan_id, "audit": record.__dict__}
+    with _PLANS_LOCK:
+        stored = PLANS.get(req.plan_id)
+        if stored is None:
+            raise HTTPException(status_code=404, detail="unknown plan_id")
+        record = record_approval(
+            req.plan_id,
+            stored["payload"]["plan"].get("status", "pending"),
+            feedback=req.feedback,
+            helpful=req.helpful or "",
+            path=AUDIT_PATH,
+        )
+        return {"plan_id": req.plan_id, "audit": record.__dict__}
 
 
 @app.get("/plan/{plan_id}/export.ics")
 def export_plan_ics(plan_id: str, tzid: Optional[str] = None) -> Response:
-    stored = PLANS.get(plan_id)
-    if stored is None:
-        raise HTTPException(status_code=404, detail="unknown plan_id")
-    plan = _plan_from_payload(stored["payload"])
-    tasks = _to_tasks(stored["tasks"])
-    existing_events = [parse_event(e) for e in stored.get("events", [])]
+    with _PLANS_LOCK:
+        stored = PLANS.get(plan_id)
+        if stored is None:
+            raise HTTPException(status_code=404, detail="unknown plan_id")
+        plan = _plan_from_payload(stored["payload"])
+        tasks = _to_tasks(stored["tasks"])
+        existing_events = [parse_event(e) for e in stored.get("events", [])]
+        alarm_minutes = stored["alarm_minutes"]
+        tz_name = tzid or stored.get("tz_name")
     return Response(
         content=export_ics(
             plan,
             tasks,
             existing_events=existing_events,
-            alarm_minutes=stored["alarm_minutes"],
+            alarm_minutes=alarm_minutes,
             tzid=tzid,
-            tz_name=tzid or stored.get("tz_name"),
+            tz_name=tz_name,
         ),
         media_type="text/calendar",
         headers={"Content-Disposition": f'attachment; filename="loadguard-{plan_id}.ics"'},
@@ -482,11 +491,12 @@ def export_plan_ics(plan_id: str, tzid: Optional[str] = None) -> Response:
 
 @app.get("/plan/{plan_id}/export.csv")
 def export_plan_csv(plan_id: str) -> PlainTextResponse:
-    stored = PLANS.get(plan_id)
-    if stored is None:
-        raise HTTPException(status_code=404, detail="unknown plan_id")
-    plan = _plan_from_payload(stored["payload"])
-    tasks = _to_tasks(stored["tasks"])
+    with _PLANS_LOCK:
+        stored = PLANS.get(plan_id)
+        if stored is None:
+            raise HTTPException(status_code=404, detail="unknown plan_id")
+        plan = _plan_from_payload(stored["payload"])
+        tasks = _to_tasks(stored["tasks"])
     return PlainTextResponse(
         content=export_tasks_csv(plan, tasks),
         media_type="text/csv",

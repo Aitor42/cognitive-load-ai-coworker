@@ -34,7 +34,7 @@ def absent_during(absences: list[Absence], start: float, end: float) -> Absence 
 def worker_absences(worker_id: str, workers: list[Worker]) -> list[Absence]:
     """Return the absences of a worker, or an empty list when unknown."""
     for worker in workers:
-        if worker.id == worker_id:
+        if worker.id == worker_id or (worker.name and worker.name == worker_id):
             return worker.absences
     return []
 
@@ -49,21 +49,27 @@ def find_reassignment_alerts(
     assignees are teammates available for that whole window.
     """
     now = time.time() if now is None else now
-    by_id = {w.id: w for w in workers}
+    by_identifier: dict[str, Worker] = {}
+    for w in workers:
+        by_identifier[w.id] = w
+        if w.name:
+            by_identifier[w.name] = w
     alerts: list[ReassignmentAlert] = []
     for task in tasks:
         if task.status != TODO or task.assignee is None or task.deadline is None:
             continue
         if task.deadline < now:
             continue
-        assignee = by_id.get(task.assignee)
+        assignee = by_identifier.get(task.assignee)
         absence = absent_during(assignee.absences if assignee else [], now, task.deadline)
         if absence is None:
             continue
         suggestions = [
             w.id
             for w in workers
-            if w.id != task.assignee and absent_during(w.absences, now, task.deadline) is None
+            if w.id != task.assignee
+            and (not w.name or w.name != task.assignee)
+            and absent_during(w.absences, now, task.deadline) is None
         ]
         alerts.append(
             ReassignmentAlert(

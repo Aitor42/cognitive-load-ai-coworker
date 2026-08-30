@@ -30,7 +30,7 @@ from .models import (
     FeatureSet,
     Task,
 )
-from .signals import compute_features
+from .signals import _window_minutes, compute_features
 from .scoring import score
 from .workflow import run_workflow
 
@@ -99,11 +99,9 @@ def run_benchmark(
 
 
 def features_window(events: list[Event], window_minutes: float | None) -> float:
-    if window_minutes is not None:
+    if window_minutes is not None and window_minutes > 0.0:
         return window_minutes
-    if not events:
-        return 60.0
-    return max((max(e.timestamp for e in events) - min(e.timestamp for e in events)) / 60.0, 60.0)
+    return _window_minutes(events)
 
 
 def _estimate_eliminated(

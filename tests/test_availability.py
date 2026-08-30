@@ -132,6 +132,15 @@ class TestFindReassignmentAlerts(unittest.TestCase):
         # Past deadline with the default (real) now -> no alert.
         self.assertEqual(find_reassignment_alerts(tasks, _workers()), [])
 
+    def test_alert_matches_worker_by_name(self) -> None:
+        tasks = [Task(id="a", title="Postmortem", priority=5, assignee="Ada", deadline=150.0)]
+        alerts = find_reassignment_alerts(tasks, _workers(), now=0.0)
+        self.assertEqual(len(alerts), 1)
+        self.assertEqual(alerts[0].suggested_assignees, ["w2"])
+
+    def test_worker_absences_matches_by_name(self) -> None:
+        self.assertEqual(len(worker_absences("Ada", _workers())), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

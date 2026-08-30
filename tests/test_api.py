@@ -749,6 +749,48 @@ class TestApi(unittest.TestCase):
             resp_auth = self.client.get("/history", headers={"X-API-Key": "secret-token-123"})
             self.assertEqual(resp_auth.status_code, 200)
 
+    def test_observability_middleware_and_telemetry(self) -> None:
+        """Observability middleware injects correlation headers and endpoints report telemetry."""
+        # 1. Automatic Request ID and Response Time headers
+        resp = self.client.get("/health")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("X-Request-ID", resp.headers)
+        self.assertIn("X-Response-Time-Ms", resp.headers)
+        auto_req_id = resp.headers["X-Request-ID"]
+        self.assertTrue(len(auto_req_id) > 0)
+
+        # 2. Propagates client-supplied correlation ID
+        custom_id = "trace-uuid-45678"
+        resp_custom = self.client.get("/health", headers={"X-Request-ID": custom_id})
+        self.assertEqual(resp_custom.headers.get("X-Request-ID"), custom_id)
+
+        # 3. Analyze endpoint includes structured telemetry payload
+        sample = self.client.get("/sample").json()
+        resp_analyze = self.client.post(
+            "/analyze",
+            json={"events": sample["events"], "tasks": sample["tasks"]},
+            headers={"X-Request-ID": custom_id},
+        )
+        self.assertEqual(resp_analyze.status_code, 200)
+        data = resp_analyze.json()
+        self.assertIn("telemetry", data)
+        self.assertEqual(data["telemetry"]["request_id"], custom_id)
+        self.assertIn("duration_ms", data["telemetry"])
+        self.assertIn("llm_provider", data["telemetry"])
+        self.assertIn("guardian_engine", data["telemetry"])
+        self.assertIn("guardian_passed", data["telemetry"])
+
+        # 4. Midday review includes structured telemetry
+        resp_midday = self.client.post(
+            "/midday",
+            json={"events": sample["events"], "tasks": sample["tasks"]},
+            headers={"X-Request-ID": custom_id},
+        )
+        self.assertEqual(resp_midday.status_code, 200)
+        data_mid = resp_midday.json()
+        self.assertIn("telemetry", data_mid)
+        self.assertEqual(data_mid["telemetry"]["request_id"], custom_id)
+
 
 if __name__ == "__main__":
     unittest.main()

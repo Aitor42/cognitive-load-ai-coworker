@@ -14,11 +14,13 @@ import json
 import logging
 import os
 import threading
+import time
+import uuid
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 from pydantic import BaseModel, Field, field_validator
 
@@ -53,6 +55,27 @@ app = FastAPI(
     description="Cognitive-Load-Aware AI Co-Worker — IBM AI Builders Challenge 2026",
     version="0.3.0",
 )
+
+
+@app.middleware("http")
+async def observability_middleware(request: Request, call_next: Any) -> Response:
+    request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
+    start_time = time.perf_counter()
+    request.state.request_id = request_id
+    response = await call_next(request)
+    duration_ms = (time.perf_counter() - start_time) * 1000.0
+    response.headers["X-Request-ID"] = request_id
+    response.headers["X-Response-Time-Ms"] = f"{duration_ms:.2f}"
+    logger.info(
+        "Request completed: method=%s path=%s status=%s duration_ms=%.2f request_id=%s",
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration_ms,
+        request_id,
+    )
+    return response
+
 
 # Local data directory (surfaced to the user; deletable from the dashboard).
 _DATA_DIR = Path(__file__).resolve().parents[2] / ".loadguard"
@@ -328,10 +351,11 @@ def ingest(req: IngestRequest) -> dict[str, Any]:
 
 
 @app.post("/analyze", dependencies=[Depends(verify_api_key)])
-def analyze(req: AnalyzeRequest) -> dict[str, Any]:
+def analyze(req: AnalyzeRequest, request: Request) -> dict[str, Any]:
     events = [parse_event(e) for e in req.events]
     tasks = _to_tasks(req.tasks)
     workers = _to_workers(req.workers or [])
+    t0 = time.perf_counter()
     result = run_workflow(
         events,
         tasks,
@@ -345,6 +369,7 @@ def analyze(req: AnalyzeRequest) -> dict[str, Any]:
         role=req.role,
         weights=req.weights,
     )
+    pipeline_duration_ms = (time.perf_counter() - t0) * 1000.0
     payload = _store_plan(
         result,
         tasks,
@@ -355,15 +380,28 @@ def analyze(req: AnalyzeRequest) -> dict[str, Any]:
     )
     payload["role"] = req.role or "default"
     payload["weights_profile"] = req.role if req.role in ROLE_PROFILES else "default"
+    req_id = getattr(request.state, "request_id", uuid.uuid4().hex)
+    guardian_engine = result.guardian.engine if result.guardian is not None else "none"
+    guardian_passed = result.guardian.passed if result.guardian is not None else True
+    guardian_sanitized = result.guardian.sanitized if result.guardian is not None else False
+    payload["telemetry"] = {
+        "request_id": req_id,
+        "duration_ms": round(pipeline_duration_ms, 2),
+        "llm_provider": os.environ.get("LLM_PROVIDER", "heuristic").lower(),
+        "guardian_engine": guardian_engine,
+        "guardian_passed": guardian_passed,
+        "guardian_sanitized": guardian_sanitized,
+    }
     return payload
 
 
 @app.post("/midday", dependencies=[Depends(verify_api_key)])
-def midday(req: MiddayRequest) -> dict[str, Any]:
+def midday(req: MiddayRequest, request: Request) -> dict[str, Any]:
     events = [parse_event(e) for e in req.events]
     tasks = _to_tasks(req.tasks)
     workers = _to_workers(req.workers or [])
     completed_ids = set(req.completed_task_ids) if req.completed_task_ids else None
+    t0 = time.perf_counter()
     review = run_midday_review(
         events,
         tasks,
@@ -375,9 +413,16 @@ def midday(req: MiddayRequest) -> dict[str, Any]:
         role=req.role,
         weights=req.weights,
     )
+    pipeline_duration_ms = (time.perf_counter() - t0) * 1000.0
     result = asdict(review)
     result["role"] = req.role or "default"
     result["weights_profile"] = req.role if req.role in ROLE_PROFILES else "default"
+    req_id = getattr(request.state, "request_id", uuid.uuid4().hex)
+    result["telemetry"] = {
+        "request_id": req_id,
+        "duration_ms": round(pipeline_duration_ms, 2),
+        "llm_provider": os.environ.get("LLM_PROVIDER", "heuristic").lower(),
+    }
     if review.plan is not None:
         # Store the afternoon plan so it can be approved and exported through
         # the same endpoints as the morning plan (accept -> export .ics/.csv).

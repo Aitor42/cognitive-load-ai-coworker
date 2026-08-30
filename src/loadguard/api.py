@@ -95,6 +95,8 @@ class AnalyzeRequest(BaseModel):
     # None uses the server default (FOCUS_ALARM_MINUTES); 0 exports without alarms.
     alarm_minutes: Optional[float] = Field(default=None, ge=0.0)
     tz_name: Optional[str] = None
+    role: Optional[str] = None
+    weights: Optional[dict[str, float]] = None
 
 
 class MiddayRequest(BaseModel):
@@ -306,8 +308,10 @@ def analyze(req: AnalyzeRequest) -> dict[str, Any]:
         guardian_model=get_guardian_model(),
         workers=workers,
         tz_name=req.tz_name,
+        role=req.role,
+        weights=req.weights,
     )
-    return _store_plan(
+    payload = _store_plan(
         result,
         tasks,
         [asdict(e) for e in events],
@@ -315,6 +319,9 @@ def analyze(req: AnalyzeRequest) -> dict[str, Any]:
         alarm_minutes=req.alarm_minutes,
         tz_name=req.tz_name,
     )
+    if req.role:
+        payload["role"] = req.role
+    return payload
 
 
 @app.post("/midday")

@@ -52,6 +52,7 @@ def _parse_args(argv: list[str]) -> dict:
         "accept": False,
         "history": None,
         "out": Path("."),
+        "role": None,
     }
     i = 1
     while i < len(argv):
@@ -67,6 +68,9 @@ def _parse_args(argv: list[str]) -> dict:
             i += 2
         elif arg == "--out" and i + 1 < len(argv):
             opts["out"] = Path(argv[i + 1])
+            i += 2
+        elif arg == "--role" and i + 1 < len(argv):
+            opts["role"] = argv[i + 1]
             i += 2
         else:
             opts["events"] = Path(arg)
@@ -95,11 +99,13 @@ def _proposal_summary(result) -> str:
     return "; ".join(parts) or "no adjustments"
 
 
-def _print_report(result) -> None:
+def _print_report(result, role: str | None = None) -> None:
     report = result.load_report
     print("=" * 64)
     print(" LoadGuard — Cognitive-Load-Aware AI Co-Worker")
     print("=" * 64)
+    if role:
+        print(f" Role profile: {role.title()}")
     print(f" Score: {report.score:.0f}/100  [{report.level.upper()}]")
     print(f" {report.explanation}")
     if result.trend:
@@ -232,9 +238,15 @@ def main() -> None:
     events = load_events(opts["events"])
     history = load_history(opts["history"]) if opts["history"] else None
     approval = "accepted" if opts["accept"] else None
-    result = run_workflow(events, sample_tasks(), history=history, approval=approval)
+    result = run_workflow(
+        events,
+        sample_tasks(),
+        history=history,
+        approval=approval,
+        role=opts.get("role"),
+    )
 
-    _print_report(result)
+    _print_report(result, role=opts.get("role"))
 
     if result.plan.status == "accepted":
         out = opts["out"]

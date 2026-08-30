@@ -86,10 +86,17 @@ details.section[open] summary{margin-bottom:12px}
 <div class="sub">The AI co-worker whose job is to protect you from the other AI co-workers · IBM AI Builders Challenge 2026</div>
 
 <div class="toolbar">
-  <select id="scenario">
+  <select id="scenario" onchange="run()">
     <option value="overload">Scenario: overload morning</option>
     <option value="balanced">Scenario: balanced day</option>
     <option value="calm">Scenario: calm day</option>
+  </select>
+  <select id="role" onchange="run()">
+    <option value="">Role: Default profile</option>
+    <option value="developer">Role: Developer (Focus-Heavy)</option>
+    <option value="manager">Role: Manager (Meeting-Dense)</option>
+    <option value="researcher">Role: Researcher (Deep Work)</option>
+    <option value="support">Role: Support (Interruption-Dense)</option>
   </select>
   <button onclick="run()" id="runBtn">Run analysis</button>
   <input type="file" id="fileInput" accept=".ics,.jsonl" style="display:none" onchange="handleFileUpload(event)">
@@ -174,9 +181,11 @@ function modelChipsHtml(r){
   const guard=r.guardian?.engine||"deterministic";
   const pChip=r.plan.proposed_by&&r.plan.proposed_by!=="deterministic"?"granite":"det";
   const gChip=guard==="granite-guardian"?"ok":"det";
+  const roleChip=r.role?`<span class="chip ok">Role: ${esc(r.role)}</span>`:"";
   return `<span class="chip ${pChip}">Decision: ${esc(proposed)}</span>
     <span class="chip ${gChip}">Guardian: ${esc(guard)}</span>
     <span class="chip">Narrator: ${esc(narrator)}</span>
+    ${roleChip}
     <span class="chip ${esc(r.plan.status)}">Status: ${esc(r.plan.status)}</span>`;
 }
 
@@ -222,13 +231,14 @@ async function run(){
   const btn=document.getElementById("runBtn");
   btn.disabled=true;
   const scenario=document.getElementById("scenario").value;
+  const role=document.getElementById("role").value || undefined;
   try{
     const s=await api("/sample");
     const events=transformEvents(s.events,scenario);
     EVENTS=events; WORKERS=s.workers||[]; TASKS=s.tasks||[];
     const hist=await api("/history");
     const r=await api("/analyze",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({events:events,tasks:TASKS,history:hist.history,workers:WORKERS})});
+      body:JSON.stringify({events:events,tasks:TASKS,history:hist.history,workers:WORKERS,role:role})});
     render(r);
   }catch(e){
     document.getElementById("err").textContent = e.message==="Failed to fetch"
@@ -258,8 +268,9 @@ async function handleFileUpload(ev){
     const s=await api("/sample");
     EVENTS=ing.events; WORKERS=s.workers||[]; TASKS=s.tasks||[];
     const hist=await api("/history");
+    const role=document.getElementById("role").value || undefined;
     const r=await api("/analyze",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({events:EVENTS,tasks:TASKS,history:hist.history,workers:WORKERS})});
+      body:JSON.stringify({events:EVENTS,tasks:TASKS,history:hist.history,workers:WORKERS,role:role})});
     render(r);
   }catch(e){
     document.getElementById("err").textContent = e.message==="Failed to fetch"

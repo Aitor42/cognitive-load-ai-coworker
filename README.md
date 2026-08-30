@@ -177,9 +177,18 @@ python demo/demo.py --accept --out outputs
 Other useful modes:
 
 ```bash
-python demo/demo.py --history history.jsonl
-python demo/demo.py --html report.html
-python demo/demo.py path/to/events.jsonl --html report.html
+python demo/demo.py --role developer          # role-specific sensitivity (developer / manager / researcher / support)
+python demo/demo.py --history history.jsonl   # compare vs personal baseline
+python demo/demo.py --html report.html        # generate self-contained HTML report
+python demo/benchmark.py --pilot demo/sample_events.jsonl  # 3-phase pilot evaluation
+```
+
+Or using the `Makefile` shortcuts:
+
+```bash
+make demo        # Run CLI demo
+make pilot       # Run 3-phase pilot evaluation
+make serve       # Launch live web dashboard at http://127.0.0.1:8000
 ```
 
 ### Install development dependencies

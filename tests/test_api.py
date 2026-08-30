@@ -190,6 +190,19 @@ class TestApi(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(PLANS[pid]["payload"]["plan"]["items"]), 2)
 
+    def test_analyze_with_role_profile(self) -> None:
+        sample = self.client.get("/sample").json()
+        resp = self.client.post(
+            "/analyze",
+            json={
+                "events": sample["events"],
+                "tasks": sample["tasks"],
+                "role": "developer",
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json().get("role"), "developer")
+
     def test_edit_plan_without_title_auto_populates_from_tasks(self) -> None:
         data = self._analyze()
         pid = data["plan_id"]

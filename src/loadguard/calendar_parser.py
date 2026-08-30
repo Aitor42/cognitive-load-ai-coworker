@@ -6,14 +6,16 @@ calendars without external dependencies.
 
 from __future__ import annotations
 
+import logging
 import re
-import sys
 from calendar import monthrange
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .models import LEAVE, VACATION, Absence, Event
+
+logger = logging.getLogger(__name__)
 
 ISO = "%Y-%m-%dT%H:%M:%SZ"
 
@@ -506,7 +508,7 @@ def _classify_vevents(
                     for start, end in _event_occurrences(props, tzids, all_day)
                 )
         except (ValueError, TypeError) as exc:
-            print(f"warning: skipping malformed calendar event: {exc}", file=sys.stderr)
+            logger.warning("skipping malformed calendar event: %s", exc)
     return events, absences
 
 

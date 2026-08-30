@@ -40,7 +40,8 @@ def _sort_key(task: Task, level: str) -> tuple[float, float, float]:
     scheduled first under HIGH/OVERLOAD (quick-win effect to reduce cognitive load).
     """
     deadline = task.deadline if task.deadline is not None else float("inf")
-    duration_bonus = task.duration_minutes if level in (HIGH, OVERLOAD) else 0.0
+    duration = float(task.duration_minutes) if task.duration_minutes is not None else 0.0
+    duration_bonus = duration if level in (HIGH, OVERLOAD) else 0.0
     return (-float(task.priority), deadline, duration_bonus)
 
 
@@ -171,7 +172,7 @@ def build_plan(
                 task,
                 rationale=f"Priority {task.priority}/5; keep in focus order (deadline-aware).",
             )
-            accumulated_work += task.duration_minutes
+            accumulated_work += float(task.duration_minutes or 30.0)
             # Time-based breaks: insert after every BREAK_CADENCE_MINUTES of
             # accumulated work instead of a fixed task count.
             if (

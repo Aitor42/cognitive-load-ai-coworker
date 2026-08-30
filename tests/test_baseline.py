@@ -65,6 +65,12 @@ class TestBaseline(unittest.TestCase):
         self.assertEqual(b.mean, 50.0)
         self.assertEqual(b.n, 2)
 
+    def test_compute_baseline_filters_inf_and_out_of_range(self):
+        b = compute_baseline([40.0, float("inf"), float("-inf"), 150.0, -10.0, 60.0])
+        self.assertIsNotNone(b)
+        self.assertEqual(b.mean, 50.0)
+        self.assertEqual(b.n, 2)
+
     def test_compute_baseline_ignores_non_numeric_strings(self):
         b = compute_baseline([40.0, "oops", 60.0])
         self.assertIsNotNone(b)

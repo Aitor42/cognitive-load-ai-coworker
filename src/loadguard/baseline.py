@@ -47,7 +47,7 @@ def compute_baseline(scores: list[float]) -> PersonalBaseline | None:
     for s in scores:
         try:
             val = float(s)
-            if not math.isnan(val):
+            if not math.isnan(val) and not math.isinf(val) and 0.0 <= val <= 100.0:
                 clean.append(val)
         except (ValueError, TypeError):
             continue

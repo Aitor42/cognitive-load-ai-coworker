@@ -23,12 +23,13 @@ RAPID_SWITCH_SECONDS = 120.0
 # documented heuristic, not a claim about a product. "ai" is matched only as
 # a standalone token, because it appears inside words like "email".
 AI_SOURCE_MARKERS = ("copilot", "assistant", "agent")
+_AI_TOKEN_RE = re.compile(r"[^a-z0-9]+")
 
 
 def _is_ai_source(source: str) -> bool:
     """Whether an opaque notification source label looks like an AI tool."""
     lowered = source.lower()
-    tokens = re.split(r"[^a-z0-9]+", lowered)
+    tokens = _AI_TOKEN_RE.split(lowered)
     if "ai" in tokens:
         return True
     return any(marker in lowered for marker in AI_SOURCE_MARKERS)
@@ -83,10 +84,21 @@ def _window_minutes(events: Iterable[Event]) -> float:
     For multi-day workloads (> 24 hours), estimates active working time
     (480 min / 8 h per active calendar day) so rates do not dilute across nights.
     """
-    stamps = [e.timestamp for e in events]
-    if not stamps:
+    min_ts = float("inf")
+    max_ts = float("-inf")
+    has_events = False
+    stamps: list[float] = []
+    for e in events:
+        ts = e.timestamp
+        has_events = True
+        if ts < min_ts:
+            min_ts = ts
+        if ts > max_ts:
+            max_ts = ts
+        stamps.append(ts)
+    if not has_events:
         return 60.0
-    raw_span = max(stamps) - min(stamps)
+    raw_span = max_ts - min_ts
     if raw_span <= 86400.0:
         return max(raw_span / 60.0, 15.0)
     unique_days = {datetime.fromtimestamp(ts, tz=timezone.utc).date() for ts in stamps}
@@ -126,22 +138,39 @@ def compute_features(events: Iterable[Event], window_minutes: float | None = Non
                 ai_notifications += 1
         elif e.kind == MEETING:
             meeting_minutes += e.duration_minutes
-            meeting_intervals.append((e.timestamp, e.timestamp + e.duration_minutes * 60.0))
+            if e.duration_minutes > 0.0:
+                meeting_intervals.append((e.timestamp, e.timestamp + e.duration_minutes * 60.0))
         elif e.kind == FOCUS_BLOCK:
             focus_minutes += e.duration_minutes
 
     # --- Multitasking proxy (two complementary signals) ---
 
-    # 1. Meeting-overlap: share of context switches during a meeting.
+    sorted_times = sorted(switch_times)
+
+    # 1. Meeting-overlap: share of context switches during a meeting (O(S log S + M log M)).
     multitask_switches = 0
-    for t in switch_times:
-        if any(start <= t <= end for start, end in meeting_intervals):
-            multitask_switches += 1
+    if switches and meeting_intervals:
+        sorted_meetings = sorted(meeting_intervals, key=lambda x: (x[0], x[1]))
+        merged_meetings: list[tuple[float, float]] = [sorted_meetings[0]]
+        for start, end in sorted_meetings[1:]:
+            last_start, last_end = merged_meetings[-1]
+            if start <= last_end:
+                merged_meetings[-1] = (last_start, max(last_end, end))
+            else:
+                merged_meetings.append((start, end))
+
+        m_idx = 0
+        num_m = len(merged_meetings)
+        for t in sorted_times:
+            while m_idx < num_m and merged_meetings[m_idx][1] < t:
+                m_idx += 1
+            if m_idx < num_m and merged_meetings[m_idx][0] <= t <= merged_meetings[m_idx][1]:
+                multitask_switches += 1
+
     meeting_multitask = (multitask_switches / switches) if switches else 0.0
 
     # 2. Rapid-fire: switches clustered within 2 minutes indicate frantic
     #    context-switching even outside meetings.
-    sorted_times = sorted(switch_times)
     rapid_pairs = sum(
         1
         for i in range(1, len(sorted_times))

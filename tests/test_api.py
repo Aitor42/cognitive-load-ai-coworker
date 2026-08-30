@@ -350,8 +350,11 @@ class TestApi(unittest.TestCase):
         self.assertEqual(self.client.get("/audit").json()["records"], [])
 
     def test_dashboard_serves_html(self) -> None:
-        resp = self.client.get("/")
-        self.assertEqual(resp.status_code, 200)
+        # First call loads from disk and caches; second call serves from cache
+        resp1 = self.client.get("/")
+        self.assertEqual(resp1.status_code, 200)
+        resp2 = self.client.get("/")
+        self.assertEqual(resp2.status_code, 200)
 
     def test_favicon_returns_svg(self) -> None:
         resp = self.client.get("/favicon.ico")
@@ -359,9 +362,20 @@ class TestApi(unittest.TestCase):
         self.assertIn("image/svg+xml", resp.headers["content-type"])
 
     def test_dashboard_missing_index_returns_404(self) -> None:
-        with mock.patch.object(Path, "exists", return_value=False):
-            resp = api_module.dashboard()
-            self.assertEqual(resp.status_code, 404)
+        with mock.patch.object(api_module, "_DASHBOARD_HTML", None):
+            with mock.patch.object(Path, "exists", return_value=False):
+                resp = api_module.dashboard()
+                self.assertEqual(resp.status_code, 404)
+
+    def test_trim_plans_enforces_max_capacity(self) -> None:
+        with mock.patch.object(api_module, "MAX_PERSISTED_PLANS", 2):
+            api_module.PLANS.clear()
+            api_module.PLANS["p1"] = {"payload": {}}
+            api_module.PLANS["p2"] = {"payload": {}}
+            api_module.PLANS["p3"] = {"payload": {}}
+            api_module._trim_plans()
+            self.assertEqual(len(api_module.PLANS), 2)
+            self.assertNotIn("p1", api_module.PLANS)
 
     def test_sample_includes_workers(self) -> None:
         sample = self.client.get("/sample").json()

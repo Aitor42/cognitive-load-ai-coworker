@@ -17,6 +17,11 @@ from .models import LEAVE, VACATION, Absence, Event
 
 ISO = "%Y-%m-%dT%H:%M:%SZ"
 
+_DURATION_RE = re.compile(
+    r"P(?:(?P<days>\d+)D)?(?:T(?:(?P<hours>\d+)H)?(?:(?P<minutes>\d+)M)?(?:(?P<seconds>\d+)S)?)?"
+)
+_VEVENT_BLOCK_RE = re.compile(r"BEGIN:VEVENT(.*?)END:VEVENT", re.DOTALL)
+
 # Summary substrings/keywords (lowercased) that mark a calendar event as an absence.
 ABSENCE_SUMMARY_KEYWORDS = (
     "out of office",
@@ -214,11 +219,7 @@ def _parse_iso(value: str) -> float:
 
 
 def _parse_duration(value: str) -> float:
-    m = re.match(
-        r"P(?:(?P<days>\d+)D)?(?:T(?:(?P<hours>\d+)H)?"
-        r"(?:(?P<minutes>\d+)M)?(?:(?P<seconds>\d+)S)?)?",
-        value.strip(),
-    )
+    m = _DURATION_RE.match(value.strip())
     if not m or not any(m.groups()):
         return 60.0
     days = int(m.group("days") or 0)
@@ -241,7 +242,7 @@ def _unfold(text: str) -> str:
 
 def _vevents_text(text: str) -> list[tuple[dict[str, str], dict[str, str | None], bool]]:
     out: list[tuple[dict[str, str], dict[str, str | None], bool]] = []
-    for block in re.findall(r"BEGIN:VEVENT(.*?)END:VEVENT", _unfold(text), re.S):
+    for block in _VEVENT_BLOCK_RE.findall(_unfold(text)):
         props: dict[str, str] = {}
         tzids: dict[str, str | None] = {}
         all_day = False

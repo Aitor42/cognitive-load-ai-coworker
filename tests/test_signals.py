@@ -166,6 +166,15 @@ class TestComputeFeatures(unittest.TestCase):
         self.assertGreater(f_zero.context_switches_per_hour, 0)
         self.assertGreater(f_neg.context_switches_per_hour, 0)
 
+    def test_zero_duration_meeting_ignored_in_intervals(self) -> None:
+        events = [
+            Event(timestamp=0.0, kind=MEETING, duration_minutes=0.0),
+            Event(timestamp=10.0, kind=CONTEXT_SWITCH),
+        ]
+        f = compute_features(events, window_minutes=60.0)
+        self.assertEqual(f.meeting_ratio, 0.0)
+        self.assertEqual(f.multitasking_index, 0.0)
+
     def test_rapid_fire_switches_increase_multitasking(self) -> None:
         """Switches within 2 minutes of each other signal frantic switching."""
         events = [

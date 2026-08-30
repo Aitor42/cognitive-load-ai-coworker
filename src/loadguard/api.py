@@ -64,7 +64,14 @@ def _load_persisted_plans() -> dict[str, dict[str, Any]]:
 
 
 # Plan store (persisted in .loadguard/plans.json): plan_id -> {"payload": ..., "tasks": [...], "events": [...]}
+MAX_PERSISTED_PLANS = 100
 PLANS: dict[str, dict[str, Any]] = _load_persisted_plans()
+
+
+def _trim_plans() -> None:
+    while len(PLANS) > MAX_PERSISTED_PLANS:
+        oldest_key = next(iter(PLANS))
+        del PLANS[oldest_key]
 
 
 def _persist_plans() -> None:
@@ -212,6 +219,7 @@ def _store_plan(
         "alarm_minutes": FOCUS_ALARM_MINUTES if alarm_minutes is None else alarm_minutes,
         "tz_name": tz_name,
     }
+    _trim_plans()
     _persist_plans()
     payload["plan_id"] = plan_id
     return payload
@@ -342,6 +350,7 @@ def midday(req: MiddayRequest) -> dict[str, Any]:
             "alarm_minutes": alarm,
             "tz_name": req.tz_name,
         }
+        _trim_plans()
         _persist_plans()
         result["plan_id"] = plan_id
     return result
@@ -570,9 +579,21 @@ def favicon() -> Response:
     return Response(content=_FAVICON_SVG, media_type="image/svg+xml")
 
 
+_DASHBOARD_HTML: str | None = None
+
+
+def _get_dashboard_html() -> str | None:
+    global _DASHBOARD_HTML
+    if _DASHBOARD_HTML is None:
+        path = Path(__file__).resolve().parents[2] / "web" / "index.html"
+        if path.exists():
+            _DASHBOARD_HTML = path.read_text(encoding="utf-8")
+    return _DASHBOARD_HTML
+
+
 @app.get("/", response_class=HTMLResponse)
 def dashboard() -> HTMLResponse:
-    path = Path(__file__).resolve().parents[2] / "web" / "index.html"
-    if path.exists():
-        return HTMLResponse(path.read_text(encoding="utf-8"))
+    content = _get_dashboard_html()
+    if content is not None:
+        return HTMLResponse(content)
     return HTMLResponse("<h1>dashboard/index.html not found</h1>", status_code=404)

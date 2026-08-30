@@ -27,11 +27,12 @@ from .agents import (
     SignalAnalystAgent,
     WorkloadPlannerAgent,
 )
+from .baseline import compute_baseline
 from .decision import GraniteDecisionAgent, merge_proposal
 from .guardian import guard_plan
 from .impact import estimate_impact
 from .llm import ChatModel
-from .models import Event, Task
+from .models import Event, Task, Worker
 from .scoring import score
 
 APPROVAL_DECISIONS = ("accepted", "rejected", "edited")
@@ -59,6 +60,12 @@ class WorkflowState(TypedDict, total=False):
     observed: dict[str, Any] | None
     exports: dict[str, str]
     status: str
+    workers: list[Worker] | None
+    role: str | None
+    weights: dict[str, float] | None
+    now: float | None
+    audit_history: list[dict] | None
+    hour_of_day: float | None
 
 
 # ---------------------------------------------------------------------------
@@ -77,7 +84,14 @@ def compute_features(state: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def diagnose_load(state: Mapping[str, Any]) -> dict[str, Any]:
-    load_report = LoadDiagnosticianAgent().run(state["features"])
+    history = state.get("history") or []
+    personal = compute_baseline(history)
+    load_report = LoadDiagnosticianAgent().run(
+        state["features"],
+        role=state.get("role"),
+        weights=state.get("weights"),
+        baseline=personal,
+    )
     return {"load_report": load_report}
 
 
@@ -85,7 +99,14 @@ def granite_plan(state: Mapping[str, Any]) -> dict[str, Any]:
     """Deterministic baseline plan + Granite proposal (gated) + merge."""
     load_report = state["load_report"]
     tasks = state["tasks"]
-    base_plan = WorkloadPlannerAgent().run(tasks, load_report)
+    base_plan = WorkloadPlannerAgent().run(
+        tasks,
+        load_report,
+        workers=state.get("workers"),
+        now=state.get("now"),
+        audit_history=state.get("audit_history"),
+        hour_of_day=state.get("hour_of_day"),
+    )
     base_plan.plan_id = state.get("plan_id") or new_plan_id()
     model = state.get("model")
     proposal = GraniteDecisionAgent(model).run(state["features"], load_report, tasks)
@@ -235,6 +256,12 @@ def run_graph(
     outcome_events: list[Event] | None = None,
     guardian_model: ChatModel | None = None,
     sequential: bool | None = None,
+    role: str | None = None,
+    weights: dict[str, float] | None = None,
+    workers: list[Worker] | None = None,
+    now: float | None = None,
+    audit_history: list[dict] | None = None,
+    hour_of_day: float | None = None,
 ) -> dict[str, Any]:
     """Run the graph, using LangGraph when available (or force sequential)."""
     state: WorkflowState = {
@@ -247,6 +274,12 @@ def run_graph(
         "approval": approval,
         "plan_id": plan_id,
         "outcome_events": outcome_events,
+        "role": role,
+        "weights": weights,
+        "workers": workers,
+        "now": now,
+        "audit_history": audit_history,
+        "hour_of_day": hour_of_day,
     }
     if sequential or not langgraph_installed():
         return run_sequential_graph(state)

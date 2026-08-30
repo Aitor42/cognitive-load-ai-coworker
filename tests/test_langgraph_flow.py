@@ -140,6 +140,24 @@ class TestLanggraphDetection(unittest.TestCase):
         with mock.patch.dict(sys.modules, {"langgraph": fake}):
             self.assertTrue(lg.langgraph_installed())
 
+    def test_run_graph_with_role_and_baseline_adaptation(self) -> None:
+        from loadguard.models import Worker
+
+        workers = [Worker(id="w1", name="Alice")]
+        # Run with researcher profile and personal history
+        state = run_graph(
+            _events(),
+            _tasks(),
+            role="researcher",
+            history=[80.0, 75.0, 70.0],
+            workers=workers,
+            sequential=True,
+            approval={"decision": "accepted"},
+        )
+        self.assertEqual(state["status"], "measured")
+        self.assertIsNotNone(state["load_report"])
+        self.assertIsNotNone(state["plan"])
+
     def test_cached_value_returned_without_reimport(self) -> None:
         lg._langgraph_available = True
         self.assertTrue(lg.langgraph_installed())

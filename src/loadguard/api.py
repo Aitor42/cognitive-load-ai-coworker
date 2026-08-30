@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import secrets
 import threading
 import time
 import uuid
@@ -278,10 +279,11 @@ def _store_plan(
 
 
 def verify_api_key(x_api_key: Optional[str] = Header(None, alias="X-API-Key")) -> None:
-    """Validate API key when LOADGUARD_API_KEY environment variable is configured."""
+    """Validate API key using constant-time comparison when LOADGUARD_API_KEY is configured."""
     expected = os.environ.get("LOADGUARD_API_KEY")
-    if expected and x_api_key != expected:
-        raise HTTPException(status_code=401, detail="Invalid or missing X-API-Key header")
+    if expected:
+        if not x_api_key or not secrets.compare_digest(x_api_key, expected):
+            raise HTTPException(status_code=401, detail="Invalid or missing X-API-Key header")
 
 
 def check_destructive_allowed() -> None:
@@ -532,6 +534,7 @@ def approve(req: ApproveRequest) -> dict[str, Any]:
             path=AUDIT_PATH,
         )
         stored["payload"]["plan"]["status"] = decision
+        _persist_plans()
         return {
             "plan_id": req.plan_id,
             "status": decision,

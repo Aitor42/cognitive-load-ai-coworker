@@ -806,6 +806,19 @@ class TestApi(unittest.TestCase):
                 "Destructive DELETE operations are disabled", resp_del_audit.json()["detail"]
             )
 
+    def test_approve_persists_status_to_disk(self) -> None:
+        """When a plan is approved, its new status is persisted in the plans file."""
+        data = self._analyze()
+        pid = data["plan_id"]
+        resp = self.client.post("/approve", json={"plan_id": pid, "decision": "accepted"})
+        self.assertEqual(resp.status_code, 200)
+
+        from loadguard.api import _load_persisted_plans
+
+        persisted = _load_persisted_plans()
+        self.assertIn(pid, persisted)
+        self.assertEqual(persisted[pid]["payload"]["plan"]["status"], "accepted")
+
 
 if __name__ == "__main__":
     unittest.main()

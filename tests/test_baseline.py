@@ -101,6 +101,15 @@ class TestHistoryPersistence(unittest.TestCase):
             self.assertEqual(load_history(path), [])
             self.assertEqual(clear_history(path), 0)
 
+    def test_clear_history_concurrent_deletion_safe(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "history.jsonl"
+            path.write_text("42.0\n", encoding="utf-8")
+            from unittest import mock
+
+            with mock.patch.object(Path, "unlink", side_effect=FileNotFoundError):
+                self.assertEqual(clear_history(path), 0)
+
     def test_load_history_ignores_invalid_lines(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "history.jsonl"

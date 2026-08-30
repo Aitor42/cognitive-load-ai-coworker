@@ -89,7 +89,9 @@ def run_workflow(
 
     # 2) Granite proposes structured adjustments; the gate decides if they apply.
     proposal = GraniteDecisionAgent(model).run(features, load_report, tasks)
-    plan, used_proposal = merge_proposal(tasks, load_report, base_plan, proposal)
+    plan, used_proposal = merge_proposal(
+        tasks, load_report, base_plan, proposal, workers=workers, now=now
+    )
     if used_proposal:
         plan.proposed_by = model.name if model is not None else "deterministic"
 

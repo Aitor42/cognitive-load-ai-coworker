@@ -192,10 +192,15 @@ function modelChipsHtml(r){
 function taskTitle(id){const t=(TASKS||[]).find(t=>t.id===id);return t?(t.title||id):id;}
 
 function itemRowsHtml(items){
-  return items.map(i=>`<li>
+  return items.map(i=>{
+    const assigneesHtml = (i.suggested_assignees && i.suggested_assignees.length)
+      ? `<div style="margin-top:4px"><span class="meta" style="font-size:11px">Suggested teammates:</span> ${i.suggested_assignees.map(a=>`<span class="chip" style="font-size:11px;padding:2px 6px;margin-right:4px">${esc(a)}</span>`).join("")}</div>`
+      : "";
+    return `<li>
       <span class="badge ${esc(i.action)}">${esc(i.action)}</span>
-      <div class="itembody"><b>${esc(i.title)}</b><div class="why">${esc(i.rationale)}</div></div>
-    </li>`).join("");
+      <div class="itembody"><b>${esc(i.title)}</b><div class="why">${esc(i.rationale)}</div>${assigneesHtml}</div>
+    </li>`;
+  }).join("");
 }
 
 function alertsHtml(alerts){

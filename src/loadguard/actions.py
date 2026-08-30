@@ -341,5 +341,8 @@ def clear_audit(path: str | Path) -> int:
     if not path.exists():
         return 0
     count = len(load_audit(path))
-    path.unlink()
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return 0
     return count

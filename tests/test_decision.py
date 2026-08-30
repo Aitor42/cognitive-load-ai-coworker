@@ -17,7 +17,7 @@ from loadguard.decision import (  # noqa: E402
     validate_proposal,
 )
 from loadguard.llm import ChatModel, HeuristicModel  # noqa: E402
-from loadguard.models import DONE, LoadReport, Plan, PlanItem, Task  # noqa: E402
+from loadguard.models import DONE, LoadReport, Plan, PlanItem, Task, Worker  # noqa: E402
 from loadguard.recommender import build_plan  # noqa: E402
 
 
@@ -325,6 +325,16 @@ class TestMergeProposal(unittest.TestCase):
         p = DecisionProposal(inserts=[InsertAction(action="weird")])
         plan, used = merge_proposal(_tasks(), _report(), base, p)
         self.assertFalse(used)
+
+    def test_delegate_populates_suggested_assignees_from_workers(self) -> None:
+        base = build_plan(_tasks(), _low_report())
+        workers = [Worker(id="w1", name="Ada"), Worker(id="w2", name="Bob")]
+        p = DecisionProposal(delegate_task_ids=["d"])
+        plan, used = merge_proposal(_tasks(), _report(), base, p, workers=workers, now=100.0)
+        self.assertTrue(used)
+        item = next(i for i in plan.items if i.task_id == "d")
+        self.assertEqual(item.action, "delegate")
+        self.assertEqual(item.suggested_assignees, ["Ada", "Bob"])
 
 
 if __name__ == "__main__":

@@ -88,11 +88,19 @@ class Task:
     assignee: Optional[str] = None  # worker id the task is assigned to, optional
 
     def __post_init__(self) -> None:
+        try:
+            self.priority = int(self.priority)
+        except (ValueError, TypeError):
+            self.priority = 3
         if self.priority < 1:
             self.priority = 1
         elif self.priority > 5:
             self.priority = 5
-        if self.duration_minutes < 0:
+        try:
+            self.duration_minutes = float(self.duration_minutes)
+        except (ValueError, TypeError):
+            self.duration_minutes = 30.0
+        if self.duration_minutes < 0.0:
             self.duration_minutes = 0.0
 
 

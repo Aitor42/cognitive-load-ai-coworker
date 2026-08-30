@@ -67,6 +67,17 @@ class TestTask(unittest.TestCase):
         t_high = Task(id="b", title="High", priority=99)
         self.assertEqual(t_high.priority, 5)
 
+    def test_priority_and_duration_defensive_types(self) -> None:
+        # String priority or float duration converted gracefully
+        t_str = Task(id="c", title="Types", priority="4", duration_minutes="45.5")  # type: ignore[arg-type]
+        self.assertEqual(t_str.priority, 4)
+        self.assertEqual(t_str.duration_minutes, 45.5)
+
+        # Invalid string falls back to safe defaults
+        t_inv = Task(id="d", title="Bad", priority="invalid", duration_minutes="bad")  # type: ignore[arg-type]
+        self.assertEqual(t_inv.priority, 3)
+        self.assertEqual(t_inv.duration_minutes, 30.0)
+
 
 class TestAbsence(unittest.TestCase):
     def test_defaults(self) -> None:

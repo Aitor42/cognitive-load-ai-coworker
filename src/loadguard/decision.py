@@ -23,7 +23,7 @@ import json
 from dataclasses import dataclass, field
 
 from .llm import ChatModel, HeuristicModel
-from .models import FeatureSet, LoadReport, Plan, PlanItem, Task, TODO
+from .models import FeatureSet, LoadReport, Plan, PlanItem, Task, TODO, Worker
 
 ALLOWED_INSERT_ACTIONS = {"focus_block", "break"}
 # Tasks with priority >= this value are critical and can never be delegated.
@@ -179,6 +179,8 @@ def merge_proposal(
     load_report: LoadReport,
     base_plan: Plan,
     proposal: DecisionProposal | None,
+    workers: list[Worker] | None = None,
+    now: float | None = None,
 ) -> tuple[Plan, bool]:
     """Apply a validated proposal on top of the deterministic plan.
 
@@ -238,6 +240,12 @@ def merge_proposal(
             items[idx].action = "delegate"
             if proposal.rationale:
                 items[idx].rationale = proposal.rationale
+            if workers is not None and not items[idx].suggested_assignees:
+                source_task = next((t for t in tasks if t.id == tid), None)
+                assignee = source_task.assignee if source_task else None
+                from .recommender import _available_workers
+
+                items[idx].suggested_assignees = _available_workers(workers, assignee, now)[:3]
             used = True
 
     # 3) Insert focus/break blocks (deduplicated, capped).

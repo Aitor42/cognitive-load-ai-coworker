@@ -112,7 +112,14 @@ def granite_plan(state: Mapping[str, Any]) -> dict[str, Any]:
     base_plan.plan_id = state.get("plan_id") or new_plan_id()
     model = state.get("model")
     proposal = GraniteDecisionAgent(model).run(state["features"], load_report, tasks)
-    plan, used = merge_proposal(tasks, load_report, base_plan, proposal)
+    plan, used = merge_proposal(
+        tasks,
+        load_report,
+        base_plan,
+        proposal,
+        workers=state.get("workers"),
+        now=state.get("now"),
+    )
     if used and model is not None:
         plan.proposed_by = model.name
     return {"base_plan": base_plan, "proposal": proposal, "plan": plan}

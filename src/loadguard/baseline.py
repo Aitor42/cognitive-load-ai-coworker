@@ -123,5 +123,8 @@ def clear_history(path: str | Path) -> int:
     if not path.exists():
         return 0
     count = len(load_history(path))
-    path.unlink()
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return 0
     return count

@@ -422,6 +422,16 @@ class TestAudit(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(clear_audit(Path(tmp) / "nope.jsonl"), 0)
 
+    def test_clear_audit_concurrent_deletion_safe(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "audit.jsonl"
+            path.write_text('{"plan_id": "p1"}\n', encoding="utf-8")
+            # Simulate file vanishing between exists() check and unlink()
+            from unittest import mock
+
+            with mock.patch.object(Path, "unlink", side_effect=FileNotFoundError):
+                self.assertEqual(clear_audit(path), 0)
+
     def test_load_audit_skips_blank_and_comment_lines(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "audit.jsonl"

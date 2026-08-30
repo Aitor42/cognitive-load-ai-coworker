@@ -97,6 +97,8 @@ class MiddayRequest(BaseModel):
     elapsed_minutes: float = 240.0
     total_minutes: float = 480.0
     completed_task_ids: Optional[list[str]] = None
+    alarm_minutes: Optional[float] = Field(default=None, ge=0.0)
+    tz_name: Optional[str] = None
 
 
 class ApproveRequest(BaseModel):
@@ -320,6 +322,7 @@ def midday(req: MiddayRequest) -> dict[str, Any]:
         req.total_minutes,
         workers=workers,
         completed_task_ids=completed_ids,
+        tz_name=req.tz_name,
     )
     result = asdict(review)
     if review.plan is not None:
@@ -327,6 +330,7 @@ def midday(req: MiddayRequest) -> dict[str, Any]:
         # the same endpoints as the morning plan (accept -> export .ics/.csv).
         review.plan.plan_id = review.plan.plan_id or new_plan_id()
         plan_id = review.plan.plan_id
+        alarm = FOCUS_ALARM_MINUTES if req.alarm_minutes is None else req.alarm_minutes
         PLANS[plan_id] = {
             "payload": {
                 "load_report": asdict(review.plan.load_report),
@@ -335,7 +339,8 @@ def midday(req: MiddayRequest) -> dict[str, Any]:
             "tasks": [asdict(t) for t in tasks],
             "events": [asdict(e) for e in events],
             "workers": [asdict(w) for w in workers],
-            "alarm_minutes": FOCUS_ALARM_MINUTES,
+            "alarm_minutes": alarm,
+            "tz_name": req.tz_name,
         }
         _persist_plans()
         result["plan_id"] = plan_id

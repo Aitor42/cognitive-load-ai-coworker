@@ -148,6 +148,7 @@ def run_midday_review(
     workers: list[Worker] | None = None,
     now: float | None = None,
     completed_task_ids: set[str] | None = None,
+    tz_name: str | None = None,
 ) -> MiddayReview:
     """Re-score the day so far, project the remainder, and re-organize if needed.
 
@@ -169,7 +170,13 @@ def run_midday_review(
 
     plan: Plan | None = None
     if reorganized:
-        plan = build_plan(remaining_tasks, projection.load_report, workers=workers, now=now)
+        plan = build_plan(
+            remaining_tasks,
+            projection.load_report,
+            workers=workers,
+            now=now,
+            tz_name=tz_name,
+        )
         plan.note = HeuristicModel().generate_note(projection.load_report, plan, remaining_tasks)
         plan, _ = guard_plan(plan, remaining_tasks)
 

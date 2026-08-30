@@ -132,6 +132,8 @@ class TestApi(unittest.TestCase):
                 "tasks": sample["tasks"],
                 "elapsed_minutes": 240,
                 "completed_task_ids": ["t1", "t2"],
+                "alarm_minutes": 15.0,
+                "tz_name": "Europe/Madrid",
             },
         )
         self.assertEqual(resp.status_code, 200)
@@ -140,6 +142,10 @@ class TestApi(unittest.TestCase):
             task_ids = [i.get("task_id") for i in body["plan"]["items"] if i.get("task_id")]
             self.assertNotIn("t1", task_ids)
             self.assertNotIn("t2", task_ids)
+        pid = body.get("plan_id")
+        if pid:
+            ics = self.client.get(f"/plan/{pid}/export.ics").text
+            self.assertIn("TRIGGER:-PT15M", ics)
 
     def test_export_ics_respects_existing_events(self) -> None:
         """Exported calendar blocks must not collide with stored existing meetings."""

@@ -122,7 +122,14 @@ def build_plan(
     items: list[PlanItem] = []
     position = 0
 
-    def add(action: str, task: Task | None = None, title: str = "", rationale: str = "") -> None:
+    def add(
+        action: str,
+        task: Task | None = None,
+        title: str = "",
+        rationale: str = "",
+        suggested_assignees: list[str] | None = None,
+        delegate_to: str | None = None,
+    ) -> None:
         nonlocal position
         position += 1
         items.append(
@@ -132,6 +139,8 @@ def build_plan(
                 task_id=task.id if task else None,
                 title=title or (task.title if task else action),
                 rationale=rationale,
+                suggested_assignees=suggested_assignees or [],
+                delegate_to=delegate_to,
             )
         )
 
@@ -159,13 +168,15 @@ def build_plan(
             else:
                 rationale = f"Priority {task.priority}/5 and load is {level}; hand off to protect attention."
             # Suggest available teammates when worker information is provided.
+            suggested: list[str] = []
             if workers is not None:
                 candidates = _available_workers(workers, task.assignee, now)
                 if candidates:
-                    rationale += f" Suggested: {', '.join(candidates[:3])}."
+                    suggested = candidates[:3]
+                    rationale += f" Suggested: {', '.join(suggested)}."
                 else:
                     rationale += " Warning: no available teammates found."
-            add("delegate", task, rationale=rationale)
+            add("delegate", task, rationale=rationale, suggested_assignees=suggested)
         else:
             add(
                 "do",

@@ -154,6 +154,8 @@ class PlanItem:
     task_id: Optional[str] = None
     title: str = ""
     rationale: str = ""
+    suggested_assignees: list[str] = field(default_factory=list)
+    delegate_to: Optional[str] = None
 
 
 @dataclass

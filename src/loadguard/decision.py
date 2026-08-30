@@ -196,6 +196,8 @@ def merge_proposal(
             task_id=i.task_id,
             title=i.title,
             rationale=i.rationale,
+            suggested_assignees=list(i.suggested_assignees),
+            delegate_to=i.delegate_to,
         )
         for i in base_plan.items
     ]

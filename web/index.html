@@ -309,12 +309,17 @@ function render(r){
     `<div class="meta" style="margin-top:8px">Top contributor: <b>${esc(LABELS[top])}</b> · ${esc(lr.explanation)}</div>`+
     assumptionsHtml;
 
-  const itemRows=r.plan.items.map((i,idx)=>`<li>
+  const itemRows=r.plan.items.map((i,idx)=>{
+    const assigneesHtml = (i.suggested_assignees && i.suggested_assignees.length)
+      ? `<div style="margin-top:4px"><span class="meta" style="font-size:11px">Suggested teammates:</span> ${i.suggested_assignees.map(a=>`<span class="chip" style="font-size:11px;padding:2px 6px;margin-right:4px">${esc(a)}</span>`).join("")}</div>`
+      : "";
+    return `<li>
       <input type="checkbox" class="editcb hidden" data-idx="${idx}" checked>
       ${i.task_id?`<label title="Mark completed" style="cursor:pointer;margin-right:6px"><input type="checkbox" class="completedcb" data-task-id="${esc(i.task_id)}"> ✓</label>`:''}
       <span class="badge ${esc(i.action)}">${esc(i.action)}</span>
-      <div class="itembody"><b>${esc(i.title)}</b><div class="why">${esc(i.rationale)}</div></div>
-    </li>`).join("");
+      <div class="itembody"><b>${esc(i.title)}</b><div class="why">${esc(i.rationale)}</div>${assigneesHtml}</div>
+    </li>`;
+  }).join("");
 
   const status=esc(r.plan.status);
   const alerts=(r.reassignment_alerts||[]);

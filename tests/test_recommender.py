@@ -296,6 +296,19 @@ class TestBuildPlan(unittest.TestCase):
         p2_inv = [i for i in plan_inv.items if i.task_id == "p2"][0]
         self.assertEqual(p2_inv.action, "do")
 
+    def test_delegation_populates_suggested_assignees(self) -> None:
+        from loadguard.models import Worker
+
+        workers = [
+            Worker(id="w1", name="Ada Lovelace"),
+            Worker(id="w2", name="Bob Bemer"),
+        ]
+        tasks = [Task(id="p1", title="Low task", priority=1, assignee="me")]
+        report = _overload_report()
+        plan = build_plan(tasks, report, workers=workers)
+        delegated = [i for i in plan.items if i.action == "delegate"][0]
+        self.assertEqual(delegated.suggested_assignees, ["Ada Lovelace", "Bob Bemer"])
+
 
 if __name__ == "__main__":
     unittest.main()

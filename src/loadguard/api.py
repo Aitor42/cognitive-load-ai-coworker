@@ -577,6 +577,8 @@ def _plan_from_payload(payload: dict[str, Any]) -> Plan:
             task_id=i.get("task_id"),
             title=i.get("title", ""),
             rationale=i.get("rationale", ""),
+            suggested_assignees=i.get("suggested_assignees", []),
+            delegate_to=i.get("delegate_to"),
         )
         for i in payload["plan"]["items"]
     ]

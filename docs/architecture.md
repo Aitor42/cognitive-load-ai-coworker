@@ -160,12 +160,27 @@ An invalid or missing proposal leaves the deterministic plan untouched. `generat
 LoadGuard never diagnoses: *"LoadGuard detects behavioral patterns associated with interruption
 overload; it does not diagnose stress, burnout, or any medical condition."*
 
-## Human approval & actions (closing the loop)
+## Human approval, state machine & actions (closing the loop)
 
 The plan is returned with `status="pending"`. The user can **accept**, **edit**, or **reject** it
-(dashboard, REST, or MCP). On acceptance, `actions.py`:
+(dashboard, REST, or MCP).
 
-- renders the focus/recovery blocks as a real `.ics` calendar;
+### Strict State Machine Lifecycle
+
+State transitions are formally guarded in `actions.py` and `api.py` via `is_valid_transition`:
+- `pending` → `accepted` | `rejected` | `edited`
+- `edited` → `accepted` | `rejected` | `edited`
+- `accepted` (terminal) → *immutable*
+- `rejected` (terminal) → *immutable*
+
+Attempting to alter a terminal state returns `400 Bad Request`.
+
+### Data Source Immutability
+
+When a human customizes or renames plan items in `/approve`, the safety gate validates structural invariants against the original source tasks without mutating `stored["tasks"]` in place. Raw input events and tasks remain strictly immutable.
+
+On acceptance, `actions.py`:
+- renders the focus/recovery blocks as a real `.ics` calendar (with `VALARM` notifications);
 - renders the resequenced task list as CSV;
 - appends the decision + feedback to a local audit trail.
 
@@ -218,43 +233,37 @@ cp .env.example .env
 # or LLM_PROVIDER=ollama (local, no cloud keys)
 ```
 
-## Team availability & reassignment alerts
+## Team availability & structured delegation
 
-`availability.py` models when a worker is unavailable. An `Absence` stores only the window
-and its type (`vacation` or `leave`) — never a medical or personal reason.
-`find_reassignment_alerts` walks todo tasks and, when a task has an assignee, a future
-deadline, and that assignee has an absence overlapping `[now, deadline]`, emits a
-`ReassignmentAlert` listing the teammates available for the whole window.
+`availability.py` and `recommender.py` model team workload distribution:
+- An `Absence` stores only the window and its type (`vacation` or `leave`) — never personal/medical data.
+- **Structured Delegation**: `PlanItem` carries `suggested_assignees: list[str]` and `delegate_to: Optional[str]`.
+- Eligible low-priority tasks (`priority <= 2`) are delegated only to active teammates who are free of overlapping absences.
+- Reassignment suggestions and interactive assignment chips allow seamless human delegation.
 
-The alert is a *suggestion*: the human decides whether to reassign. It never mutates the
-plan automatically, consistent with "Granite proposes, LoadGuard validates, the human
-decides".
-
-`scripts/capture_signals.py` extracts absences from a real calendar ICS: out-of-office /
-vacation events (all-day `VALUE=DATE` events, an `X-MICROSOFT-CDO-BUSYSTATUS:OOF` flag, or
-a matching summary) become `Absence` records. Only the fact and type are kept — the event
-summary is never captured, so no medical or personal reason leaks into the data.
+`scripts/capture_signals.py` extracts absences from real calendars (all-day events, `OOF` status).
 
 ## Daily cycle: morning analysis + midday re-organization
 
-`projection.py` projects the end-of-day load from partial-day observations. The only
-assumption is conservative and documented: the remaining day continues at the observed
-per-hour rates and ratios (or at explicitly supplied remaining-day features). Features are
-blended as a time-weighted average, then re-scored.
+`projection.py` projects the end-of-day load from partial-day observations:
+1. **Morning** — `run_workflow` produces the morning strategy and initial plan.
+2. **Midday** — `run_midday_review` tracks completed tasks, re-scores observed load, and re-plans for the afternoon if projected load is `high` or `overload`.
 
-`scheduler.py` ties the two scheduled beats together:
+## Enterprise Observability & Telemetry
 
-1. **Morning** — the full `run_workflow` loop produces the initial plan.
-2. **Midday** — `run_midday_review` re-scores the day so far, projects the remainder, and
-   re-plans (deterministically, then guarded) when the projected end-of-day level is
-   `high` or `overload`.
+Every request through the FastAPI layer passes through correlation tracking middleware:
+- `X-Request-ID`: Trace identifier propagated across headers and logs.
+- `X-Response-Time-Ms`: High-resolution execution latency in milliseconds.
+- `telemetry` block: Returns `duration_ms`, `llm_provider`, and Granite Guardian validation status.
+- Structured non-PII logging for enterprise monitoring.
 
-`scripts/schedule.py` is a cron-friendly CLI for both beats; the functions themselves are
-pure, so any scheduler (cron, an in-process loop, APScheduler) can drive them.
+## Persistence, Concurrency and Security Boundaries
 
-## Persistence and deployment boundaries
-
-The optional API stores plans, score history, and approval audit records under `.loadguard/` in the repository root. This directory is local runtime state and is ignored by Git. The API has no authentication and exposes deletion endpoints; bind it to `127.0.0.1` for local use or add an authentication/reverse-proxy layer before exposing it to a network. Docker binds to `0.0.0.0` inside the container so port publishing works.
+- **State Directory**: `.loadguard/` stores runtime plans, history, and audit logs (ignored by Git).
+- **Concurrency & Race Conditions**: Mutex `_PLANS_LOCK` and atomic per-thread temporary file writes (`.tmp.<tid>`) prevent corrupted writes under parallel load.
+- **Authentication**: `LOADGUARD_API_KEY` enforces `X-API-Key` validation on all analytical and mutating endpoints.
+- **Destructive Operation Guard**: `LOADGUARD_ALLOW_DELETE=false` disables `DELETE /history` and `DELETE /audit` in production.
+- **Input Validation**: Pydantic `@field_validator("role")` returns `422 Unprocessable Entity` for unrecognized roles; `Task` defends against out-of-range priority and negative duration.
 
 ## Extensibility
 

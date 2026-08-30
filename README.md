@@ -138,9 +138,13 @@ Detailed design and scoring rationale: [`docs/architecture.md`](docs/architectur
 ## ✨ Main capabilities
 
 - Explainable Cognitive Load Score from 0–100 with named factors and interaction terms.
-- **Role profile sensitivity tuning** (developer, manager, researcher, support) for personalized scoring.
+- **Role profile sensitivity tuning** (developer, manager, researcher, support) with validated schemas and strict 422 error handling.
+- **Structured task delegation** proposing optimal teammate assignees (`suggested_assignees`, `delegate_to`) with interactive UI assignment chips.
 - **Timezone-aware planning** with dynamic late-day fatigue protection (post-16:00 workload adaptation).
 - **Collision-free `.ics` export** with multi-calendar interval merging and configurable `VALARM` notifications.
+- **Enterprise Observability & AI Telemetry**: Correlation IDs (`X-Request-ID`), response timing (`X-Response-Time-Ms`), and structured inference telemetry (`telemetry` block reporting duration, LLM provider, and Granite Guardian safety checks).
+- **Deployment Security & Access Control**: Optional API key authorization (`LOADGUARD_API_KEY` / `X-API-Key`) and destructive operation guardrails (`LOADGUARD_ALLOW_DELETE=false`).
+- **Strict State Machine & Source Immutability**: Enforces valid lifecycle transitions (`pending` → `accepted`/`rejected`/`edited`) while preserving raw input data integrity.
 - Synthetic JSONL demo and adapters for calendar/notification signals.
 - Human approval flow: accept, edit, or reject plans interactively.
 - Personal baseline, trend, confidence, local history, and audit trail.
@@ -215,37 +219,64 @@ Install the API layer and start the local server:
 
 ```bash
 pip install ".[api]"
-HOST=127.0.0.1 python app.py
+HOST=127.0.0.1 PORT=8000 python app.py
 ```
 
-Open <http://127.0.0.1:8000/> for the dashboard. The API has no authentication and includes delete endpoints, so keep it on loopback unless you explicitly secure it. Docker uses `0.0.0.0` inside the container.
+Open <http://127.0.0.1:8000/> for the interactive web dashboard.
 
-Useful endpoints:
+### Security and Deployment Configuration
+
+| Environment Variable | Default | Purpose |
+| --- | --- | --- |
+| `HOST` | `127.0.0.1` | Network interface (`127.0.0.1` for local safety, `0.0.0.0` for Docker/PaaS). |
+| `PORT` | `8000` | HTTP port (validated range 1–65535). |
+| `LOADGUARD_API_KEY` | *(empty)* | Optional API key. When set, all analytical and mutating endpoints require `X-API-Key: <key>` (`401 Unauthorized` otherwise). |
+| `LOADGUARD_ALLOW_DELETE` | `true` | When set to `false`, blocks `DELETE /history` and `DELETE /audit` (`403 Forbidden`). |
+
+### Observability and AI Telemetry
+
+Every API response includes standard correlation headers:
+- `X-Request-ID`: Client-provided correlation trace or auto-generated UUID4.
+- `X-Response-Time-Ms`: End-to-end request processing time in milliseconds.
+
+`POST /analyze` and `POST /midday` responses include structured inference telemetry:
+```json
+"telemetry": {
+  "request_id": "8f3b26c0...",
+  "duration_ms": 14.85,
+  "llm_provider": "watsonx",
+  "guardian_engine": "granite-guardian",
+  "guardian_passed": true,
+  "guardian_sanitized": false
+}
+```
+
+### Useful Endpoints
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
 | `GET` | `/` | Interactive dashboard |
-| `GET` | `/health` | Health check |
+| `GET` | `/health` | Health check (always public) |
 | `GET` | `/sample` | Sample events, tasks, and workers |
-| `POST` | `/analyze` | Analyze events and create a pending plan |
+| `POST` | `/analyze` | Analyze events, evaluate guardrails, and create a pending plan |
 | `POST` | `/ingest` | Parse uploaded ICS or JSONL text |
 | `POST` | `/midday` | Project the end of day and optionally re-plan |
-| `POST` | `/approve` | Accept, edit, or reject a plan |
+| `POST` | `/approve` | Accept, edit, or reject a plan (enforces state machine transitions) |
 | `POST` | `/feedback` | Record feedback about a plan |
-| `GET` | `/plan/{id}/export.ics` | Download calendar export |
+| `GET` | `/plan/{id}/export.ics` | Download RFC 5545 calendar export with VALARM reminders |
 | `GET` | `/plan/{id}/export.csv` | Download task export |
 | `GET/POST/DELETE` | `/history` | Manage personal score history |
 | `GET/DELETE` | `/audit` | Read or delete local decision audit records |
-| `GET/POST` | `/pilot` | Run pilot evaluation |
+| `GET/POST` | `/pilot` | Run 3-phase pilot evaluation (baseline / projected / observed) |
 | `GET` | `/privacy` | Show captured and never-captured data |
 
-Interactive API documentation is available at <http://127.0.0.1:8000/docs>.
+Interactive OpenAPI documentation is available at <http://127.0.0.1:8000/docs>.
 
 ### Docker
 
 ```bash
 docker build -t loadguard .
-docker run --rm -p 8000:8000 loadguard
+docker run --rm -p 8000:8000 -e LOADGUARD_ALLOW_DELETE=false loadguard
 ```
 
 Then visit <http://127.0.0.1:8000/>. The container includes the API, LLM, and MCP optional dependencies.

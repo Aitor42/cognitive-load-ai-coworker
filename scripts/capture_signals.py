@@ -184,8 +184,12 @@ def parse_focus(path: Path) -> list[Event]:
             continue
         parts = line.split(None, 2)
         ts = _parse_iso(parts[0])
-        minutes = float(parts[1]) if len(parts) > 1 else 30.0
-        title = parts[2] if len(parts) > 2 else ""
+        try:
+            minutes = float(parts[1]) if len(parts) > 1 else 30.0
+            title = parts[2] if len(parts) > 2 else ""
+        except ValueError:
+            minutes = 30.0
+            title = " ".join(parts[1:])
         events.append(
             Event(timestamp=ts, kind="focus_block", duration_minutes=minutes, meta={"title": title})
         )

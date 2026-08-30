@@ -253,7 +253,9 @@ def main() -> None:
         out.mkdir(parents=True, exist_ok=True)
         ics_path = out / f"loadguard-{result.plan.plan_id}.ics"
         csv_path = out / f"loadguard-{result.plan.plan_id}.csv"
-        ics_path.write_text(export_ics(result.plan, sample_tasks()), encoding="utf-8")
+        ics_path.write_text(
+            export_ics(result.plan, sample_tasks(), existing_events=events), encoding="utf-8"
+        )
         csv_path.write_text(export_tasks_csv(result.plan, sample_tasks()), encoding="utf-8")
         print(f"\n ✅ Plan accepted — protected calendar written to {ics_path}")
         print(f"    Resequenced task list written to {csv_path}")

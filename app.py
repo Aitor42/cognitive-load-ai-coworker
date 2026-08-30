@@ -4,8 +4,9 @@ Usage:
     pip install -r requirements.txt
     python app.py
 
-The REST API has no authentication and exposes DELETE endpoints, so it should
-only listen on the local loopback unless you explicitly opt in:
+The REST API binds to the local loopback by default and supports optional API-key
+authentication. Because it exposes DELETE endpoints, use authentication and disable
+destructive operations when network-exposed:
 
     HOST=127.0.0.1 python app.py   # local-only (recommended)
     HOST=0.0.0.0 python app.py     # network-exposed (needed inside Docker)

@@ -72,7 +72,7 @@ See [`architecture.mmd`](architecture.mmd) for the full Mermaid diagram. The sam
 | `benchmark.py` | Objective metrics + three-phase pilot evaluation. |
 | `llm.py` | `ChatModel` interface; heuristic + watsonx + ollama (Granite). |
 | `config.py` | Select the model / guardian provider from environment variables. |
-| `api.py` / `app.py` | Optional FastAPI HTTP layer + dashboard. |
+| `api.py` / `app.py` | FastAPI HTTP layer and dashboard; available when the `api` dependency group is installed. |
 
 ## Signal proxies
 
@@ -261,8 +261,8 @@ Every request through the FastAPI layer passes through correlation tracking midd
 
 - **State Directory**: `.loadguard/` stores runtime plans, history, and audit logs (ignored by Git).
 - **Concurrency & Race Conditions**: Mutex `_PLANS_LOCK` and atomic per-thread temporary file writes (`.tmp.<tid>`) prevent corrupted writes under parallel load.
-- **Authentication**: `LOADGUARD_API_KEY` enforces `X-API-Key` validation on all analytical and mutating endpoints.
-- **Destructive Operation Guard**: `LOADGUARD_ALLOW_DELETE=false` disables `DELETE /history` and `DELETE /audit` in production.
+- **Authentication**: when `LOADGUARD_API_KEY` is set, analytical and mutating endpoints enforce the `X-API-Key` header; `/health` remains public. When unset, the API is intended for trusted local use.
+- **Destructive Operation Guard**: `LOADGUARD_ALLOW_DELETE=false` disables `DELETE /history` and `DELETE /audit`; enable this setting for network-exposed deployments.
 - **Input Validation**: Pydantic `@field_validator("role")` returns `422 Unprocessable Entity` for unrecognized roles; `Task` defends against out-of-range priority and negative duration.
 
 ## Extensibility

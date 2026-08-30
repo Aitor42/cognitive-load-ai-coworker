@@ -20,7 +20,7 @@ LoadGuard detects behavioral signals associated with excessive interruptions and
 - [AI approach and architecture](#-ai-approach-and-architecture)
 - [IBM technology](#️-ibm-technology)
 - [Quick start](#-quick-start)
-- [Optional API and dashboard](#-optional-api-and-dashboard)
+- [API and dashboard](#-api-and-dashboard)
 - [Optional Granite models](#-optional-granite-models)
 - [Real signals and daily scheduling](#-real-signals-and-daily-scheduling)
 - [MCP server for IBM Bob](#-mcp-server-for-ibm-bob)
@@ -206,14 +206,14 @@ pip install ".[api,llm,bob,dev]"
 
 The optional groups are:
 
-- `api`: FastAPI, Uvicorn, Pydantic, and HTTPX.
-- `llm`: LangChain, `langchain-ibm`, and LangGraph.
-- `bob`: MCP support for IBM Bob.
-- `dev`: coverage, Ruff, and mypy.
+- `api`: FastAPI, Uvicorn, Pydantic, and HTTPX; required for the REST API and dashboard.
+- `llm`: LangChain, `langchain-ibm`, and LangGraph; required only for Granite/watsonx/Ollama integrations and LangGraph orchestration.
+- `bob`: MCP support for IBM Bob; required only for the MCP server.
+- `dev`: coverage, Ruff, and mypy; required for development checks.
 
 ---
 
-## 🌐 Optional API and dashboard
+## 🌐 API and dashboard
 
 Install the API layer and start the local server:
 
@@ -279,7 +279,7 @@ docker build -t loadguard .
 docker run --rm -p 8000:8000 -e LOADGUARD_ALLOW_DELETE=false loadguard
 ```
 
-Then visit <http://127.0.0.1:8000/>. The container includes the API, LLM, and MCP optional dependencies.
+Then visit <http://127.0.0.1:8000/>. The container installs the API, LLM, and MCP dependency groups through `requirements.txt`.
 
 ---
 
@@ -395,7 +395,7 @@ The score has important limits:
 - It is a transparent behavioral proxy, not a diagnosis or clinical measurement.
 - Thresholds and weights are prototype assumptions and may not generalize across people or teams.
 - A projected reduction is not an observed result.
-- The API has no authentication and persists local history, plans, and audit data under `.loadguard/`; protect or delete that directory as appropriate.
+- API-key authentication is optional for local development and recommended for any network-exposed deployment. The API persists local history, plans, and audit data under `.loadguard/`; protect or delete that directory as appropriate.
 
 The dashboard’s `/privacy` endpoint documents the current capture contract.
 
@@ -462,6 +462,6 @@ The MCP integration lets Bob invoke the LoadGuard pipeline during development; i
 
 ## 👥 Team and license
 
-- *(add team member names, universities, and roles here)*
+- Add each participant's name, university, and role before submitting. Team size is 1–5 participants.
 
 MIT — see [`LICENSE`](LICENSE).

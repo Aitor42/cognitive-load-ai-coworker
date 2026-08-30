@@ -13,7 +13,7 @@ pip install ".[bob]"
 python mcp_server/server.py --self-test   # verify tools work without a Bob session
 ```
 
-The server is intended for trusted local clients. It does not provide authentication or network access controls.
+The server is intended for trusted local clients only. The MCP server itself does not provide authentication or network access controls; run it locally and do not expose it to untrusted networks.
 
 ## Tools
 

@@ -11,6 +11,7 @@ privacy endpoint describing exactly what is captured.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import threading
 from dataclasses import asdict
@@ -44,6 +45,8 @@ from .sample_data import sample_tasks, sample_workers
 from .scoring import ROLE_PROFILES
 from .signals import _to_epoch, compute_features, load_events, parse_event
 from .workflow import WorkflowResult, run_workflow
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="LoadGuard",
@@ -85,8 +88,8 @@ def _persist_plans() -> None:
         tmp = PLANS_PATH.with_suffix(f".tmp.{threading.get_ident()}")
         tmp.write_text(json.dumps(PLANS), encoding="utf-8")
         tmp.replace(PLANS_PATH)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Failed to persist plans to %s: %s", PLANS_PATH, exc)
 
 
 class AnalyzeRequest(BaseModel):

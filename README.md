@@ -137,16 +137,17 @@ Detailed design and scoring rationale: [`docs/architecture.md`](docs/architectur
 
 ## ✨ Main capabilities
 
-- Explainable Cognitive Load Score from 0–100 with named factors.
+- Explainable Cognitive Load Score from 0–100 with named factors and interaction terms.
+- **Role profile sensitivity tuning** (developer, manager, researcher, support) for personalized scoring.
+- **Timezone-aware planning** with dynamic late-day fatigue protection (post-16:00 workload adaptation).
+- **Collision-free `.ics` export** with multi-calendar interval merging and configurable `VALARM` notifications.
 - Synthetic JSONL demo and adapters for calendar/notification signals.
-- Human approval flow: accept, edit, or reject.
-- `.ics` export with optional `VALARM` reminders and task CSV export.
+- Human approval flow: accept, edit, or reject plans interactively.
 - Personal baseline, trend, confidence, local history, and audit trail.
 - Team absences and deadline-aware reassignment alerts.
-- Midday end-of-day projection and re-organization.
-- Self-contained HTML report.
-- REST API and dashboard, optional LangGraph orchestration, and IBM Bob MCP tools.
-- Deterministic fallback with no API keys.
+- Midday end-of-day projection and afternoon re-organization.
+- Self-contained HTML report, interactive web dashboard, LangGraph orchestration, and IBM Bob MCP tools.
+- Deterministic fallback with zero API keys required.
 
 ---
 

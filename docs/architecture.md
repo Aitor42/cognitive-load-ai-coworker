@@ -108,6 +108,30 @@ A **personal baseline** (`baseline.py`) reframes the absolute score relative to 
 own history, with a trend direction and confidence level — so a score of 70 means something
 different for someone whose personal average is 45 vs. 60.
 
+### Role profiles & sensitivity tuning
+
+Different knowledge work profiles experience interruption stressors differently. LoadGuard
+provides pre-configured, calibrated role profiles (`scoring.py`, `models.py`):
+
+- `developer`: Higher weight on context switching and focus protection to shield deep cognitive tasks.
+- `manager`: Higher meeting tolerance with stricter threshold for notifications and context switching.
+- `researcher`: Maximizes focus ratio weighting and prioritizes undisturbed study blocks.
+- `support`: Tuned for high baseline inbound communication volume.
+
+### Timezone awareness & late-day fatigue protection
+
+Workload planning (`recommender.py`) dynamically adapts to the user's local timezone (`tz_name`):
+- Converts epoch timestamps to local workday hours using standard IANA `ZoneInfo`.
+- **Late-day fatigue protection**: Past 16:00 local time, cognitive resilience is lower; the planner
+  dynamically adjusts delegation thresholds to protect the human from afternoon overload.
+
+### Calendar collision avoidance & multi-calendar merging
+
+When exporting protected focus blocks (`actions.py`):
+- `_merge_busy_intervals` combines overlapping and adjacent meetings from merged calendars into disjoint blocks.
+- `_find_next_free_slot` traverses busy periods to ensure focus blocks are placed only in genuine free gaps.
+- Exported `.ics` calendars respect the local day-boundary horizon and include configurable `VALARM` notifications.
+
 ## Granite Decision Agent (proposes, never dictates)
 
 `decision.py` asks Granite for a structured JSON proposal — which task to prioritize, which to

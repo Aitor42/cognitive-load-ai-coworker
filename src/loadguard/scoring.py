@@ -13,6 +13,8 @@ heavy managers).
 
 from __future__ import annotations
 
+from typing import Any
+
 from .models import HIGH, LOW, MODERATE, OVERLOAD, FeatureSet, LoadReport
 
 # Default weights for individual factors (sum to 1.0). Interruption frequency
@@ -86,11 +88,6 @@ def _level(score: float) -> str:
     return OVERLOAD
 
 
-from typing import Any
-
-from .models import HIGH, LOW, MODERATE, OVERLOAD, FeatureSet, LoadReport
-
-
 def _contributions(
     factors: dict[str, float],
     baseline: Any = None,
@@ -102,7 +99,11 @@ def _contributions(
     personal baseline rather than a static global threshold.
     """
     scale = 1.0
-    if baseline is not None and getattr(baseline, "n", 0) >= 2 and getattr(baseline, "mean", 0.0) > 0:
+    if (
+        baseline is not None
+        and getattr(baseline, "n", 0) >= 2
+        and getattr(baseline, "mean", 0.0) > 0
+    ):
         scale = max(0.75, min(getattr(baseline, "mean") / 40.0, 1.5))
 
     switches_mid = MIDPOINT_CONTEXT_SWITCHES * scale
@@ -113,9 +114,7 @@ def _contributions(
             factors.get("context_switches_per_hour", 0.0), switches_mid
         ),
         "meeting_ratio": max(0.0, min(factors.get("meeting_ratio", 0.0), 1.0)),
-        "notification_rate": _normalize(
-            factors.get("notification_rate", 0.0), notifs_mid
-        ),
+        "notification_rate": _normalize(factors.get("notification_rate", 0.0), notifs_mid),
         # Focus time is protective: invert it so more focus lowers the score.
         "focus_ratio": max(0.0, min(1.0 - factors.get("focus_ratio", 0.0), 1.0)),
         "multitasking_index": max(0.0, min(factors.get("multitasking_index", 0.0), 1.0)),

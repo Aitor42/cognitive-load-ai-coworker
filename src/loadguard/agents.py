@@ -7,6 +7,8 @@ LangGraph StateGraph for orchestration and tool use without changes.
 
 from __future__ import annotations
 
+from typing import Any
+
 from .llm import ChatModel, HeuristicModel
 from .models import Event, FeatureSet, LoadReport, Plan, Task, Worker
 from .recommender import build_plan

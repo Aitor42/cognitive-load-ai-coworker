@@ -19,7 +19,7 @@ from loadguard.actions import (  # noqa: E402
     load_audit,
     record_approval,
 )
-from loadguard.models import LoadReport, Plan, PlanItem, Task  # noqa: E402
+from loadguard.models import Event, LoadReport, Plan, PlanItem, Task  # noqa: E402
 
 
 def _plan() -> Plan:
@@ -245,12 +245,26 @@ class TestExportIcs(unittest.TestCase):
     def test_day_end_epoch_timezone(self):
         """_day_end_epoch respects custom timezone string."""
         from loadguard.actions import _day_end_epoch
+
         # Start at 23:00 UTC (1_700_002_800). Next UTC midnight is +3600s.
         utc_end = _day_end_epoch(1_700_002_800.0, tz_name="UTC")
         self.assertEqual(utc_end, 1_700_006_400.0)
         # In America/New_York (UTC-5 in Nov), 23:00 UTC is 18:00 EST (same day), so NY midnight is 6 hours later (+21600s -> 1_700_024_400.0)
         ny_end = _day_end_epoch(1_700_002_800.0, tz_name="America/New_York")
         self.assertEqual(ny_end, 1_700_024_400.0)
+        # Invalid timezone falls back to UTC
+        invalid_end = _day_end_epoch(1_700_002_800.0, tz_name="Invalid/Timezone")
+        self.assertEqual(invalid_end, utc_end)
+
+    def test_export_ics_existing_events_without_timestamps_falls_back(self):
+        plan = Plan(
+            load_report=LoadReport(score=80.0, level="overload"),
+            plan_id="x",
+            items=[PlanItem(position=1, action="focus_block", title="Focus 1")],
+        )
+        dummy_event = Event(timestamp=None, kind="context_switch")
+        ics = export_ics(plan, _tasks(), existing_events=[dummy_event])
+        self.assertIn("BEGIN:VCALENDAR", ics)
 
     def test_unknown_action_warns(self):
         """An action outside the known vocabulary warns instead of failing silently."""

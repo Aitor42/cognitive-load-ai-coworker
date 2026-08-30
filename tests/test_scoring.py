@@ -492,9 +492,16 @@ class TestRoleProfilesAndCustomWeights(unittest.TestCase):
         rep_unknown = score(f, role="astronaut")
         self.assertEqual(rep_default.score, rep_unknown.score)
 
+    def test_zero_sum_custom_weights_falls_back(self) -> None:
+        f = FeatureSet(context_switches_per_hour=6.0, focus_ratio=0.5)
+        rep_default = score(f)
+        rep_zero = score(f, weights={"context_switches_per_hour": 0.0})
+        self.assertEqual(rep_default.score, rep_zero.score)
+
     def test_baseline_adaptive_midpoints(self) -> None:
         """Personal baseline adjusts midpoints for high communication workers."""
         from loadguard.baseline import PersonalBaseline
+
         f = FeatureSet(notification_rate=20.0, focus_ratio=1.0)
         rep_static = score(f)
         # High personal baseline mean (75) increases notification midpoint scale -> lower score contribution for same rate

@@ -70,7 +70,9 @@ def run_workflow(
     """Run the full sense -> diagnose -> plan -> validate -> approve -> impact pipeline."""
     features = SignalAnalystAgent().run(events, window_minutes)
     personal = compute_baseline(history or [])
-    load_report = LoadDiagnosticianAgent().run(features, role=role, weights=weights, baseline=personal)
+    load_report = LoadDiagnosticianAgent().run(
+        features, role=role, weights=weights, baseline=personal
+    )
 
     # 1) Deterministic safety-baseline plan (respects past audit decisions & time of day).
     base_plan = WorkloadPlannerAgent().run(

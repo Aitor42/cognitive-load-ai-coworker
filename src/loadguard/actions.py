@@ -197,7 +197,7 @@ def export_ics(
                 all_busy.append((e.timestamp, e.timestamp + e.duration_minutes * 60.0))
     all_busy = _merge_busy_intervals(all_busy)
 
-    task_durations = {t.id: max(0.0, float(t.duration_minutes)) for t in tasks}
+    task_durations = {t.id: max(0.0, float(t.duration_minutes or 30.0)) for t in tasks}
 
     lines = [
         "BEGIN:VCALENDAR",

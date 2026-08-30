@@ -468,7 +468,7 @@ def _event_occurrences(
         for v in props.get("EXDATE", "").split(",")
         if v
     }
-    duration = end - start
+    duration = max(end - start, 0.0)
     return [(s, s + duration) for s in _expand_rrule(start, rule, until, exdates)]
 
 

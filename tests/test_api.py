@@ -214,6 +214,33 @@ class TestApi(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json().get("role"), "developer")
+        self.assertEqual(resp.json().get("weights_profile"), "developer")
+
+    def test_analyze_with_invalid_role_returns_422(self) -> None:
+        sample = self.client.get("/sample").json()
+        resp = self.client.post(
+            "/analyze",
+            json={
+                "events": sample["events"],
+                "tasks": sample["tasks"],
+                "role": "astronaut",
+            },
+        )
+        self.assertEqual(resp.status_code, 422)
+        self.assertIn("unknown role 'astronaut'", str(resp.json()))
+
+    def test_midday_with_invalid_role_returns_422(self) -> None:
+        sample = self.client.get("/sample").json()
+        resp = self.client.post(
+            "/midday",
+            json={
+                "events": sample["events"],
+                "tasks": sample["tasks"],
+                "role": "astronaut",
+            },
+        )
+        self.assertEqual(resp.status_code, 422)
+        self.assertIn("unknown role 'astronaut'", str(resp.json()))
 
     def test_edit_plan_without_title_auto_populates_from_tasks(self) -> None:
         data = self._analyze()

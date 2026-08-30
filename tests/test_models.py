@@ -59,6 +59,14 @@ class TestTask(unittest.TestCase):
         t = Task(id="a", title="Fix", priority=3, assignee="w1")
         self.assertEqual(t.assignee, "w1")
 
+    def test_priority_and_duration_clamped(self) -> None:
+        t_low = Task(id="a", title="Low", priority=0, duration_minutes=-10.0)
+        self.assertEqual(t_low.priority, 1)
+        self.assertEqual(t_low.duration_minutes, 0.0)
+
+        t_high = Task(id="b", title="High", priority=99)
+        self.assertEqual(t_high.priority, 5)
+
 
 class TestAbsence(unittest.TestCase):
     def test_defaults(self) -> None:

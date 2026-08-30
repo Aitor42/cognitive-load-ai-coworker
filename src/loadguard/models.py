@@ -87,6 +87,14 @@ class Task:
     status: str = TODO
     assignee: Optional[str] = None  # worker id the task is assigned to, optional
 
+    def __post_init__(self) -> None:
+        if self.priority < 1:
+            self.priority = 1
+        elif self.priority > 5:
+            self.priority = 5
+        if self.duration_minutes < 0:
+            self.duration_minutes = 0.0
+
 
 @dataclass
 class Absence:

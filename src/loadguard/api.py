@@ -19,7 +19,7 @@ from typing import Any, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import HTMLResponse, PlainTextResponse, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from .actions import (
     APPROVAL_DECISIONS,
@@ -41,6 +41,7 @@ from .impact import estimate_impact
 from .models import Absence, LoadReport, Plan, PlanItem, Task, Worker
 from .projection import run_midday_review
 from .sample_data import sample_tasks, sample_workers
+from .scoring import ROLE_PROFILES
 from .signals import _to_epoch, compute_features, load_events, parse_event
 from .workflow import WorkflowResult, run_workflow
 
@@ -102,6 +103,14 @@ class AnalyzeRequest(BaseModel):
     role: Optional[str] = None
     weights: Optional[dict[str, float]] = None
 
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in ROLE_PROFILES:
+            allowed = sorted(ROLE_PROFILES.keys())
+            raise ValueError(f"unknown role {v!r}; allowed roles: {allowed}")
+        return v
+
 
 class MiddayRequest(BaseModel):
     events: list[dict[str, Any]]
@@ -114,6 +123,14 @@ class MiddayRequest(BaseModel):
     tz_name: Optional[str] = None
     role: Optional[str] = None
     weights: Optional[dict[str, float]] = None
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in ROLE_PROFILES:
+            allowed = sorted(ROLE_PROFILES.keys())
+            raise ValueError(f"unknown role {v!r}; allowed roles: {allowed}")
+        return v
 
 
 class ApproveRequest(BaseModel):
@@ -333,8 +350,8 @@ def analyze(req: AnalyzeRequest) -> dict[str, Any]:
         alarm_minutes=req.alarm_minutes,
         tz_name=req.tz_name,
     )
-    if req.role:
-        payload["role"] = req.role
+    payload["role"] = req.role or "default"
+    payload["weights_profile"] = req.role if req.role in ROLE_PROFILES else "default"
     return payload
 
 
@@ -356,8 +373,8 @@ def midday(req: MiddayRequest) -> dict[str, Any]:
         weights=req.weights,
     )
     result = asdict(review)
-    if req.role:
-        result["role"] = req.role
+    result["role"] = req.role or "default"
+    result["weights_profile"] = req.role if req.role in ROLE_PROFILES else "default"
     if review.plan is not None:
         # Store the afternoon plan so it can be approved and exported through
         # the same endpoints as the morning plan (accept -> export .ics/.csv).

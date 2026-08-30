@@ -28,6 +28,8 @@ def main() -> None:
     ap.add_argument("--events", type=Path, default=SAMPLE, help="JSONL signal stream")
     ap.add_argument("--elapsed-minutes", type=float, default=240.0)
     ap.add_argument("--total-minutes", type=float, default=480.0)
+    ap.add_argument("--role", type=str, default=None, help="Role profile sensitivity")
+    ap.add_argument("--tz", type=str, default=None, help="IANA timezone name")
     args = ap.parse_args()
 
     events = load_events(args.events)
@@ -38,6 +40,8 @@ def main() -> None:
         workers=sample_workers(),
         elapsed_minutes=args.elapsed_minutes,
         total_minutes=args.total_minutes,
+        tz_name=args.tz,
+        role=args.role,
     )
 
     morning = cycle.morning

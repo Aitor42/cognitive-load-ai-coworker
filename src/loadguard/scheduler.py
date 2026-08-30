@@ -55,9 +55,21 @@ def run_daily_cycle(
     total_minutes: float = 480.0,
     model: ChatModel | None = None,
     now: float | None = None,
+    tz_name: str | None = None,
+    role: str | None = None,
+    weights: dict[str, float] | None = None,
 ) -> DailyCycle:
     """Run the morning analysis and the midday re-organization."""
-    morning = run_workflow(morning_events, tasks, model=model, workers=workers, now=now)
+    morning = run_workflow(
+        morning_events,
+        tasks,
+        model=model,
+        workers=workers,
+        now=now,
+        tz_name=tz_name,
+        role=role,
+        weights=weights,
+    )
     midday = run_midday_review(
         events_so_far,
         tasks,
@@ -65,5 +77,8 @@ def run_daily_cycle(
         total_minutes,
         workers=workers,
         now=now,
+        tz_name=tz_name,
+        role=role,
+        weights=weights,
     )
     return DailyCycle(morning=morning, midday=midday)

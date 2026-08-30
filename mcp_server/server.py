@@ -31,6 +31,7 @@ from loadguard.actions import (  # noqa: E402
 )
 from loadguard.benchmark import run_benchmark, run_pilot_evaluation  # noqa: E402
 from loadguard.models import Event, Task  # noqa: E402
+from loadguard.projection import run_midday_review  # noqa: E402
 from loadguard.sample_data import sample_tasks  # noqa: E402
 from loadguard.scoring import score  # noqa: E402
 from loadguard.signals import _to_epoch, compute_features, load_events, parse_event  # noqa: E402
@@ -70,18 +71,18 @@ def _to_tasks(payload: list[dict[str, Any]]) -> list[Task]:
     ]
 
 
-def compute_load_score(events: list[dict]) -> dict:
+def compute_load_score(events: list[dict], role: str | None = None) -> dict:
     """Compute the Cognitive Load Score (0-100) and level from events."""
     try:
-        return asdict(score(compute_features(_to_events(events))))
+        return asdict(score(compute_features(_to_events(events)), role=role))
     except Exception as exc:
         return {"error": str(exc)}
 
 
-def analyze_workload(events: list[dict], tasks: list[dict]) -> dict:
+def analyze_workload(events: list[dict], tasks: list[dict], role: str | None = None) -> dict:
     """Run the full pipeline: score + plan + impact."""
     try:
-        result = run_workflow(_to_events(events), _to_tasks(tasks))
+        result = run_workflow(_to_events(events), _to_tasks(tasks), role=role)
         return {
             "features": asdict(result.features),
             "load_report": asdict(result.load_report),
@@ -100,10 +101,20 @@ def benchmark_workload(events: list[dict], tasks: list[dict]) -> dict:
         return {"error": str(exc)}
 
 
-def propose_plan(events: list[dict], tasks: list[dict], history: list[float] | None = None) -> dict:
+def propose_plan(
+    events: list[dict],
+    tasks: list[dict],
+    history: list[float] | None = None,
+    role: str | None = None,
+) -> dict:
     """Run the full loop: Granite proposal (gated) + guardian + baseline + impact."""
     try:
-        result = run_workflow(_to_events(events), _to_tasks(tasks), history=history or None)
+        result = run_workflow(
+            _to_events(events),
+            _to_tasks(tasks),
+            history=history or None,
+            role=role,
+        )
         return {
             "features": asdict(result.features),
             "load_report": asdict(result.load_report),
@@ -113,6 +124,29 @@ def propose_plan(events: list[dict], tasks: list[dict], history: list[float] | N
             "plan": asdict(result.plan),
             "impact": asdict(result.impact),
         }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+def review_midday_workload(
+    events: list[dict],
+    tasks: list[dict],
+    elapsed_minutes: float = 240.0,
+    total_minutes: float = 480.0,
+    role: str | None = None,
+    tz_name: str | None = None,
+) -> dict:
+    """Midday re-score, end-of-day projection, and afternoon re-organization."""
+    try:
+        review = run_midday_review(
+            _to_events(events),
+            _to_tasks(tasks),
+            elapsed_minutes=elapsed_minutes,
+            total_minutes=total_minutes,
+            tz_name=tz_name,
+            role=role,
+        )
+        return asdict(review)
     except Exception as exc:
         return {"error": str(exc)}
 
@@ -207,7 +241,12 @@ def self_test() -> None:
         payloads, task_payloads, start_epoch=1_700_000_000.0, alarm_minutes=0.0
     )["ics"]
     assert "BEGIN:VALARM" not in unalarmed, "alarm_minutes=0 must disable reminders"
-    print("export_plan_ics alarm variants OK", file=sys.stderr)
+    # Test midday workload review
+    midday = review_midday_workload(
+        payloads, task_payloads, elapsed_minutes=240.0, role="developer"
+    )
+    assert "projected_score" in midday, "midday review projected_score missing"
+    print("review_midday_workload self-test OK", file=sys.stderr)
 
 
 def main() -> None:
@@ -223,6 +262,7 @@ def main() -> None:
     mcp.tool()(analyze_workload)
     mcp.tool()(benchmark_workload)
     mcp.tool()(propose_plan)
+    mcp.tool()(review_midday_workload)
     mcp.tool()(approve_plan)
     mcp.tool()(export_plan_ics)
     mcp.tool()(export_plan_csv)

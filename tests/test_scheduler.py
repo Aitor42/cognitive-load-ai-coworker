@@ -38,6 +38,23 @@ class TestDailyCycle(unittest.TestCase):
         self.assertIsInstance(cycle.midday, MiddayReview)
         self.assertEqual(cycle.morning.plan.plan_id, cycle.morning.plan.plan_id)
 
+    def test_run_daily_cycle_with_role_and_tz(self) -> None:
+        tasks = [Task(id="a", title="Fix", priority=5)]
+        workers = [Worker(id="w1", name="Ada")]
+        cycle = run_daily_cycle(
+            _events(),
+            _events(),
+            tasks,
+            workers=workers,
+            elapsed_minutes=240.0,
+            total_minutes=480.0,
+            tz_name="Europe/Madrid",
+            role="developer",
+        )
+        self.assertIsInstance(cycle, DailyCycle)
+        self.assertIsInstance(cycle.morning, WorkflowResult)
+        self.assertIsInstance(cycle.midday, MiddayReview)
+
 
 if __name__ == "__main__":
     unittest.main()

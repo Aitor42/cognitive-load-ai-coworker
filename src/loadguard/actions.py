@@ -119,17 +119,33 @@ def _day_end_epoch(epoch: float, tz_name: str | None = None) -> float:
     return next_day.timestamp()
 
 
+def _merge_busy_intervals(intervals: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """Merge overlapping and contiguous busy intervals into disjoint sorted intervals."""
+    if not intervals:
+        return []
+    sorted_intervals = sorted(intervals, key=lambda x: (x[0], x[1]))
+    merged: list[tuple[float, float]] = [sorted_intervals[0]]
+    for start, end in sorted_intervals[1:]:
+        last_start, last_end = merged[-1]
+        if start <= last_end:
+            merged[-1] = (last_start, max(last_end, end))
+        else:
+            merged.append((start, end))
+    return merged
+
+
 def _find_next_free_slot(
     cursor: float, duration_seconds: float, busy_intervals: list[tuple[float, float]]
 ) -> float:
     """Advance cursor past any overlapping busy intervals until a contiguous free window fits."""
-    sorted_busy = sorted([b for b in busy_intervals if b[1] > cursor], key=lambda x: x[0])
-    while True:
-        end = cursor + duration_seconds
-        overlap = next((b for b in sorted_busy if max(cursor, b[0]) < min(end, b[1])), None)
-        if overlap is None:
+    merged = _merge_busy_intervals(busy_intervals)
+    for start, end in merged:
+        if end <= cursor:
+            continue
+        if cursor + duration_seconds <= start:
             return cursor
-        cursor = max(cursor, overlap[1])
+        cursor = end
+    return cursor
 
 
 def export_ics(
@@ -179,6 +195,7 @@ def export_ics(
         for e in existing_events:
             if e.kind in (MEETING, "meeting", "busy") and e.duration_minutes > 0:
                 all_busy.append((e.timestamp, e.timestamp + e.duration_minutes * 60.0))
+    all_busy = _merge_busy_intervals(all_busy)
 
     task_durations = {t.id: max(0.0, float(t.duration_minutes)) for t in tasks}
 

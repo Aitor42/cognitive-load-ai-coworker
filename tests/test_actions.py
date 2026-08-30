@@ -343,6 +343,22 @@ class TestExportIcs(unittest.TestCase):
         ics = export_ics(plan, _tasks(), start_epoch=1_700_000_000.0, existing_events=events)
         self.assertIn("DTSTART:20231114T221320Z", ics)
 
+    def test_merge_busy_intervals(self):
+        """Overlapping and contiguous intervals merge properly."""
+        from loadguard.actions import _merge_busy_intervals, _find_next_free_slot
+
+        self.assertEqual(_merge_busy_intervals([]), [])
+        merged = _merge_busy_intervals([(100.0, 200.0), (150.0, 250.0), (300.0, 400.0)])
+        self.assertEqual(merged, [(100.0, 250.0), (300.0, 400.0)])
+
+        # Free slot search jumps past merged overlapping blocks
+        slot = _find_next_free_slot(100.0, 60.0, [(100.0, 200.0), (180.0, 300.0)])
+        self.assertEqual(slot, 300.0)
+
+        # Free slot fits in gap between two busy blocks
+        slot_gap = _find_next_free_slot(100.0, 50.0, [(100.0, 200.0), (300.0, 400.0)])
+        self.assertEqual(slot_gap, 200.0)
+
 
 class TestExportCsv(unittest.TestCase):
     def test_columns_and_rows(self):

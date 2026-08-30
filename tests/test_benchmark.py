@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import capture_signals  # noqa: E402
+
 from loadguard.benchmark import (  # noqa: E402
     _estimate_eliminated,
     _pct_reduction,
@@ -257,10 +258,9 @@ class TestCapture(unittest.TestCase):
             path.unlink()
 
     def _write_ics(self, text: str) -> Path:
-        tmp = tempfile.NamedTemporaryFile("w", suffix=".ics", delete=False)
-        tmp.write(text)
-        tmp.close()
-        return Path(tmp.name)
+        with tempfile.NamedTemporaryFile("w", suffix=".ics", delete=False) as tmp:
+            tmp.write(text)
+            return Path(tmp.name)
 
     def test_parse_ics_date(self) -> None:
         ts = capture_signals._parse_ics_date("20260817")

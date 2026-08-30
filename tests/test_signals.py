@@ -198,9 +198,7 @@ class TestComputeFeatures(unittest.TestCase):
             Event(timestamp=120.0, kind=CONTEXT_SWITCH),  # 10s -> rapid
         ]
         f = compute_features(events, window_minutes=60.0)
-        # meeting_multitask: 0/3 (all outside meeting)
-        # rapid: 2/2 = 1.0
-        # multitasking = max(0, 1.0) = 1.0
+        # All switches outside meeting, rapid pairs yield ratio 1.0
         self.assertAlmostEqual(f.multitasking_index, 1.0, places=2)
 
     def test_ai_source_markers(self) -> None:

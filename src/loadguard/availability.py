@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import time
 
-from .models import Absence, ReassignmentAlert, Task, TODO, VACATION, Worker
+from .models import TODO, VACATION, Absence, ReassignmentAlert, Task, Worker
 
 KIND_LABELS = {VACATION: "vacation", "leave": "leave"}
 

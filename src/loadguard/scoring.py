@@ -111,7 +111,7 @@ def _contributions(
         and getattr(baseline, "n", 0) >= 2
         and getattr(baseline, "mean", 0.0) > 0
     ):
-        scale = max(0.75, min(getattr(baseline, "mean") / 40.0, 1.5))
+        scale = max(0.75, min(baseline.mean / 40.0, 1.5))
 
     switches_mid = MIDPOINT_CONTEXT_SWITCHES * scale
     notifs_mid = MIDPOINT_NOTIFICATIONS * scale

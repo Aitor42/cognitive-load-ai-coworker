@@ -417,10 +417,12 @@ class TestApi(unittest.TestCase):
         self.assertIn("image/svg+xml", resp.headers["content-type"])
 
     def test_dashboard_missing_index_returns_404(self) -> None:
-        with mock.patch.object(api_module, "_DASHBOARD_HTML", None):
-            with mock.patch.object(Path, "exists", return_value=False):
-                resp = api_module.dashboard()
-                self.assertEqual(resp.status_code, 404)
+        with (
+            mock.patch.object(api_module, "_DASHBOARD_HTML", None),
+            mock.patch.object(Path, "exists", return_value=False),
+        ):
+            resp = api_module.dashboard()
+            self.assertEqual(resp.status_code, 404)
 
     def test_trim_plans_enforces_max_capacity(self) -> None:
         with mock.patch.object(api_module, "MAX_PERSISTED_PLANS", 2):

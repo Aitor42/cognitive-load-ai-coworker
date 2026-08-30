@@ -283,30 +283,25 @@ def _is_absence(props: dict[str, str], all_day: bool = False) -> bool:
     """Detect an out-of-office / vacation / leave event from its properties."""
     summary = props.get("SUMMARY", "").lower().strip()
     for k in ABSENCE_SUMMARY_KEYWORDS:
-        if k in summary:
+        if k in summary and (
+            all_day
+            or summary == k
+            or summary.startswith((f"{k} ", f"{k}:", f"{k}-"))
+            or f"[{k}]" in summary
+            or f"({k})" in summary
+            or summary.endswith(f" {k}")
+            or "on leave" in summary
+            or "out of office" in summary
+            or "annual leave" in summary
+        ):
             if (
-                all_day
-                or summary == k
-                or summary.startswith(f"{k} ")
-                or summary.startswith(f"{k}:")
-                or summary.startswith(f"{k}-")
-                or f"[{k}]" in summary
-                or f"({k})" in summary
-                or summary.endswith(f" {k}")
-                or "on leave" in summary
-                or "out of office" in summary
-                or "annual leave" in summary
+                k == "permiso"
+                and not all_day
+                and summary != "permiso"
+                and not summary.startswith(("permiso retribuido", "permiso por", "permiso médico"))
             ):
-                if (
-                    k == "permiso"
-                    and not all_day
-                    and summary != "permiso"
-                    and not summary.startswith("permiso retribuido")
-                    and not summary.startswith("permiso por")
-                    and not summary.startswith("permiso médico")
-                ):
-                    continue
-                return True
+                continue
+            return True
     if props.get("X-MICROSOFT-CDO-BUSYSTATUS", "").upper() == "OOF":
         return True
     return all_day and props.get("TRANSP", "").upper() == "TRANSPARENT"

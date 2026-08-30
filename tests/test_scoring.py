@@ -74,12 +74,12 @@ LEVEL_CASES = [
     (100.0, "overload"),
 ]
 
-# (description, features, expected_level, expected_score)
-# Expected scores are derived from the documented formula:
-# base = 0.30*cs_norm + 0.20*meeting + 0.20*notif_norm + 0.15*(1-focus)
-#        + 0.15*multitask
-# interaction = meeting * max(cs_norm, notif_norm) * 0.10
-# total = min(base + interaction, 1.0) * 100
+"""
+Expected scores formula:
+base = 0.30*cs_norm + 0.20*meeting + 0.20*notif_norm + 0.15*(1-focus) + 0.15*multitask
+interaction = meeting * max(cs_norm, notif_norm) * 0.10
+total = min(base + interaction, 1.0) * 100
+"""
 PAIRWISE_CASES = [
     ("all calm", FeatureSet(focus_ratio=1.0), "low", 0.0),
     ("no focus logged", FeatureSet(), "low", 15.0),
@@ -200,7 +200,7 @@ def _all_pairs(parameter_space: dict[str, list[float]]) -> list[dict[str, float]
         best_row: dict[str, float] | None = None
         best_hit: set = set()
         for combo in itertools.product(*(parameter_space[f] for f in factors)):
-            row = dict(zip(factors, combo))
+            row = dict(zip(factors, combo, strict=True))
             hit = covered(row) & uncovered
             if len(hit) > len(best_hit):
                 best_hit = hit

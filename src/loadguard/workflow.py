@@ -20,13 +20,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .actions import new_plan_id
-from .availability import find_reassignment_alerts
 from .agents import (
     LoadDiagnosticianAgent,
     NarratorAgent,
     SignalAnalystAgent,
     WorkloadPlannerAgent,
 )
+from .availability import find_reassignment_alerts
 from .baseline import PersonalBaseline, TrendInfo, compute_baseline, trend
 from .decision import DecisionProposal, GraniteDecisionAgent, merge_proposal
 from .guardian import GuardianResult, guard_plan

@@ -11,6 +11,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 
+from loadguard.sample_data import sample_tasks  # noqa: E402
+from loadguard.signals import load_events  # noqa: E402
 from mcp_server.server import (  # noqa: E402
     _parse_bool,
     _to_events,
@@ -26,8 +28,6 @@ from mcp_server.server import (  # noqa: E402
     review_midday_workload,
     self_test,
 )
-from loadguard.sample_data import sample_tasks  # noqa: E402
-from loadguard.signals import load_events  # noqa: E402
 
 
 class TestMCPServer(unittest.TestCase):

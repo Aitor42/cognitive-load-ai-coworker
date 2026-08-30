@@ -9,13 +9,13 @@ impact) is dependency-free and uses only the Python standard library so the
 prototype is reproducible by judges without installing anything.
 """
 
-from .models import Event, FeatureSet, LoadReport, Plan, PlanItem, Task
-from .signals import compute_features, load_events
-from .scoring import score
-from .recommender import build_plan
-from .impact import ImpactResult, estimate_impact
-from .workflow import WorkflowResult, run_workflow
 from .config import get_model
+from .impact import ImpactResult, estimate_impact
+from .models import Event, FeatureSet, LoadReport, Plan, PlanItem, Task
+from .recommender import build_plan
+from .scoring import score
+from .signals import compute_features, load_events
+from .workflow import WorkflowResult, run_workflow
 
 __all__ = [
     "Event",

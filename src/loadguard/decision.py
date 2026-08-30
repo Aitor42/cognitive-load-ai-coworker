@@ -23,7 +23,7 @@ import json
 from dataclasses import dataclass, field
 
 from .llm import ChatModel, HeuristicModel
-from .models import FeatureSet, LoadReport, Plan, PlanItem, Task, TODO, Worker
+from .models import TODO, FeatureSet, LoadReport, Plan, PlanItem, Task, Worker
 
 ALLOWED_INSERT_ACTIONS = {"focus_block", "break"}
 # Tasks with priority >= this value are critical and can never be delegated.

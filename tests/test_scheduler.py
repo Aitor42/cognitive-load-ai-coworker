@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from loadguard.models import Event, FOCUS_BLOCK, MEETING, Task, Worker  # noqa: E402
+from loadguard.models import FOCUS_BLOCK, MEETING, Event, Task, Worker  # noqa: E402
 from loadguard.projection import MiddayReview  # noqa: E402
 from loadguard.scheduler import DailyCycle, run_daily_cycle  # noqa: E402
 from loadguard.workflow import WorkflowResult  # noqa: E402

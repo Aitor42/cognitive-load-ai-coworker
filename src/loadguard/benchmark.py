@@ -30,8 +30,8 @@ from .models import (
     FeatureSet,
     Task,
 )
-from .signals import _window_minutes, compute_features
 from .scoring import score
+from .signals import _window_minutes, compute_features
 from .workflow import run_workflow
 
 

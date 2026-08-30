@@ -281,9 +281,8 @@ def _store_plan(
 def verify_api_key(x_api_key: Optional[str] = Header(None, alias="X-API-Key")) -> None:
     """Validate API key using constant-time comparison when LOADGUARD_API_KEY is configured."""
     expected = os.environ.get("LOADGUARD_API_KEY")
-    if expected:
-        if not x_api_key or not secrets.compare_digest(x_api_key, expected):
-            raise HTTPException(status_code=401, detail="Invalid or missing X-API-Key header")
+    if expected and (not x_api_key or not secrets.compare_digest(x_api_key, expected)):
+        raise HTTPException(status_code=401, detail="Invalid or missing X-API-Key header")
 
 
 def check_destructive_allowed() -> None:

@@ -273,7 +273,10 @@ def export_ics(
         elif item.action in ("delegate", "batch"):
             cursor += MINOR_STEP_MINUTES * 60.0
         else:
-            warnings.warn(f"unknown plan action {item.action!r}; skipped in calendar export")
+            warnings.warn(
+                f"unknown plan action {item.action!r}; skipped in calendar export",
+                stacklevel=2,
+            )
     lines.append("END:VCALENDAR")
     return "\r\n".join(lines) + "\r\n"
 

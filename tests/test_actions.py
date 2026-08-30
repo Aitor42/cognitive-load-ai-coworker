@@ -289,7 +289,7 @@ class TestExportIcs(unittest.TestCase):
 
     def test_export_ics_skips_overlapping_meeting(self):
         """Focus block avoids colliding with existing meeting and starts in the free gap."""
-        from loadguard.models import Event, MEETING
+        from loadguard.models import MEETING, Event
 
         existing = [Event(timestamp=1_700_000_000.0, kind=MEETING, duration_minutes=60.0)]
         plan = Plan(
@@ -330,7 +330,7 @@ class TestExportIcs(unittest.TestCase):
         self.assertIn("DTSTART:20231114T224320Z", ics)
 
     def test_export_ics_ignores_zero_duration_or_non_meeting_events(self):
-        from loadguard.models import Event, NOTIFICATION, MEETING
+        from loadguard.models import MEETING, NOTIFICATION, Event
 
         events = [
             Event(timestamp=1_700_000_000.0, kind=NOTIFICATION),
@@ -346,7 +346,7 @@ class TestExportIcs(unittest.TestCase):
 
     def test_merge_busy_intervals(self):
         """Overlapping and contiguous intervals merge properly."""
-        from loadguard.actions import _merge_busy_intervals, _find_next_free_slot
+        from loadguard.actions import _find_next_free_slot, _merge_busy_intervals
 
         self.assertEqual(_merge_busy_intervals([]), [])
         merged = _merge_busy_intervals([(100.0, 200.0), (150.0, 250.0), (300.0, 400.0)])

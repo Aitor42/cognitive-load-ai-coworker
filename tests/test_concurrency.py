@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 
 from fastapi.testclient import TestClient  # noqa: E402
+
 from loadguard.actions import load_audit, record_approval  # noqa: E402
 from loadguard.api import app  # noqa: E402
 from loadguard.baseline import append_score, load_history  # noqa: E402

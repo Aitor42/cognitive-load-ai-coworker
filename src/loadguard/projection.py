@@ -96,6 +96,8 @@ def project_end_of_day(
     elapsed_minutes: float,
     total_minutes: float,
     remaining: FeatureSet | None = None,
+    role: str | None = None,
+    weights: dict[str, float] | None = None,
 ) -> DayProjection:
     """Blend observed partial-day features with an assumed rest-of-day.
 
@@ -136,7 +138,7 @@ def project_end_of_day(
         observed=observed,
         projected_remaining=remaining,
         full_day=full_day,
-        load_report=score(fatigued),
+        load_report=score(fatigued, role=role, weights=weights),
     )
 
 
@@ -149,6 +151,8 @@ def run_midday_review(
     now: float | None = None,
     completed_task_ids: set[str] | None = None,
     tz_name: str | None = None,
+    role: str | None = None,
+    weights: dict[str, float] | None = None,
 ) -> MiddayReview:
     """Re-score the day so far, project the remainder, and re-organize if needed.
 
@@ -159,8 +163,14 @@ def run_midday_review(
     from the re-plan so that midday re-organization respects morning progress.
     """
     observed = compute_features(events_so_far, window_minutes=elapsed_minutes)
-    observed_report = score(observed)
-    projection = project_end_of_day(observed, elapsed_minutes, total_minutes)
+    observed_report = score(observed, role=role, weights=weights)
+    projection = project_end_of_day(
+        observed,
+        elapsed_minutes,
+        total_minutes,
+        role=role,
+        weights=weights,
+    )
     reorganized = projection.load_report.level in REPLAN_LEVELS
 
     # Filter out completed tasks so the re-plan only covers remaining work.

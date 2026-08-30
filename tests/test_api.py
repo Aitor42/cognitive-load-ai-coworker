@@ -482,6 +482,22 @@ class TestApi(unittest.TestCase):
         self.assertIn("reorganized", data)
         self.assertIn("reassignment_alerts", data)
 
+    def test_midday_with_role_profile(self) -> None:
+        sample = self.client.get("/sample").json()
+        resp = self.client.post(
+            "/midday",
+            json={
+                "events": sample["events"],
+                "tasks": sample["tasks"],
+                "workers": sample["workers"],
+                "elapsed_minutes": 240.0,
+                "total_minutes": 480.0,
+                "role": "developer",
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json().get("role"), "developer")
+
     def _busy_day_events(self) -> list[dict]:
         """A dense day that reliably projects to overload and triggers a replan."""
         events: list[dict] = []

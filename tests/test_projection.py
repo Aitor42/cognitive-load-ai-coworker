@@ -171,6 +171,15 @@ class TestFatigueFactor(unittest.TestCase):
         self.assertAlmostEqual(projection.full_day.context_switches_per_hour, 6.0)
         # But the load_report.score should reflect fatigue (higher than raw)
 
+    def test_run_midday_review_with_role_profile(self) -> None:
+        events = _overload_events()
+        tasks = [Task(id="a", title="Fix", priority=5)]
+        review = run_midday_review(
+            events, tasks, elapsed_minutes=240.0, total_minutes=480.0, role="developer"
+        )
+        self.assertIsInstance(review, MiddayReview)
+        self.assertTrue(review.reorganized)
+
 
 if __name__ == "__main__":
     unittest.main()

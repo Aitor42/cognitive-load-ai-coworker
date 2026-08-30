@@ -148,7 +148,13 @@ def apply_plan(state: Mapping[str, Any]) -> dict[str, Any]:
     tasks = state["tasks"]
     return {
         "exports": {
-            "ics": export_ics(plan, tasks, existing_events=state.get("events")),
+            "ics": export_ics(
+                plan,
+                tasks,
+                existing_events=state.get("events"),
+                alarm_minutes=state.get("alarm_minutes"),
+                tz_name=state.get("tz_name"),
+            ),
             "tasks_csv": export_tasks_csv(plan, tasks),
         },
         "status": "applied",

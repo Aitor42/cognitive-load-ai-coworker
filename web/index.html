@@ -494,8 +494,9 @@ async function middayReview(){
       .map(cb => cb.dataset.taskId)
       .filter(Boolean);
     const elapsed=spanMinutes(EVENTS);
+    const role=document.getElementById("role").value || undefined;
     const r=await api("/midday",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({events:EVENTS,tasks:TASKS,workers:WORKERS,elapsed_minutes:elapsed,total_minutes:480,completed_task_ids:completedTasks})});
+      body:JSON.stringify({events:EVENTS,tasks:TASKS,workers:WORKERS,elapsed_minutes:elapsed,total_minutes:480,completed_task_ids:completedTasks,role:role})});
     const planHtml=(r.reorganized&&r.plan&&r.plan.items&&r.plan.items.length)
       ? `<h2 style="margin-top:14px">Reorganized plan</h2><ul>${itemRowsHtml(r.plan.items)}</ul>
          <div class="actions" id="middayActions">

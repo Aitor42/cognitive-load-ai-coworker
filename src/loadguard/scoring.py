@@ -54,6 +54,13 @@ ROLE_PROFILES: dict[str, dict[str, float]] = {
         "focus_ratio": 0.10,
         "multitasking_index": 0.15,
     },
+    "support": {
+        "context_switches_per_hour": 0.30,
+        "meeting_ratio": 0.15,
+        "notification_rate": 0.15,  # Higher tolerance for inbound notification volume
+        "focus_ratio": 0.15,
+        "multitasking_index": 0.25,  # High sensitivity to rapid ticket/context thrashing
+    },
 }
 
 # Interaction weight: when meetings and interruptions overlap, the combined

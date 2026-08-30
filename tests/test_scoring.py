@@ -492,6 +492,13 @@ class TestRoleProfilesAndCustomWeights(unittest.TestCase):
         rep_unknown = score(f, role="astronaut")
         self.assertEqual(rep_default.score, rep_unknown.score)
 
+    def test_support_role_profile(self) -> None:
+        f = FeatureSet(multitasking_index=0.8, focus_ratio=1.0)
+        rep_support = score(f, role="support")
+        rep_default = score(f, role="default")
+        # Support profile has 0.25 weight on multitasking vs 0.15 default
+        self.assertGreater(rep_support.score, rep_default.score)
+
     def test_zero_sum_custom_weights_falls_back(self) -> None:
         f = FeatureSet(context_switches_per_hour=6.0, focus_ratio=0.5)
         rep_default = score(f)

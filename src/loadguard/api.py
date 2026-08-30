@@ -108,6 +108,8 @@ class MiddayRequest(BaseModel):
     completed_task_ids: Optional[list[str]] = None
     alarm_minutes: Optional[float] = Field(default=None, ge=0.0)
     tz_name: Optional[str] = None
+    role: Optional[str] = None
+    weights: Optional[dict[str, float]] = None
 
 
 class ApproveRequest(BaseModel):
@@ -338,8 +340,12 @@ def midday(req: MiddayRequest) -> dict[str, Any]:
         workers=workers,
         completed_task_ids=completed_ids,
         tz_name=req.tz_name,
+        role=req.role,
+        weights=req.weights,
     )
     result = asdict(review)
+    if req.role:
+        result["role"] = req.role
     if review.plan is not None:
         # Store the afternoon plan so it can be approved and exported through
         # the same endpoints as the morning plan (accept -> export .ics/.csv).

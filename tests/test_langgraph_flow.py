@@ -144,19 +144,22 @@ class TestLanggraphDetection(unittest.TestCase):
         from loadguard.models import Worker
 
         workers = [Worker(id="w1", name="Alice")]
-        # Run with researcher profile and personal history
+        # Run with researcher profile, outcome events, and personal history
         state = run_graph(
             _events(),
             _tasks(),
             role="researcher",
             history=[80.0, 75.0, 70.0],
             workers=workers,
+            outcome_events=_events(),
             sequential=True,
             approval={"decision": "accepted"},
         )
         self.assertEqual(state["status"], "measured")
         self.assertIsNotNone(state["load_report"])
         self.assertIsNotNone(state["plan"])
+        self.assertIsNotNone(state["observed"])
+        self.assertIn("score", state["observed"])
 
     def test_cached_value_returned_without_reimport(self) -> None:
         lg._langgraph_available = True

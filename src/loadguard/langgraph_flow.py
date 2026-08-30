@@ -159,12 +159,18 @@ def measure_outcome(state: Mapping[str, Any]) -> dict[str, Any]:
     """Projected impact, plus observed metrics when outcome events exist."""
     features = state["features"]
     plan = state["plan"]
-    impact = estimate_impact(features, plan)
+    impact = estimate_impact(
+        features,
+        plan,
+        history=state.get("history"),
+        weights=state.get("weights"),
+        role=state.get("role"),
+    )
     observed: dict[str, Any] | None = None
     outcome = state.get("outcome_events")
     if outcome:
         obs_features = SignalAnalystAgent().run(outcome, state.get("window_minutes"))
-        obs = score(obs_features)
+        obs = score(obs_features, role=state.get("role"), weights=state.get("weights"))
         observed = {
             "score": obs.score,
             "level": obs.level,

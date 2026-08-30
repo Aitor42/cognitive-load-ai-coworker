@@ -11,12 +11,13 @@ privacy endpoint describing exactly what is captured.
 from __future__ import annotations
 
 import json
+import os
 import threading
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 from pydantic import BaseModel, Field
 
@@ -233,6 +234,13 @@ def _store_plan(
     return payload
 
 
+def verify_api_key(x_api_key: Optional[str] = Header(None, alias="X-API-Key")) -> None:
+    """Validate API key when LOADGUARD_API_KEY environment variable is configured."""
+    expected = os.environ.get("LOADGUARD_API_KEY")
+    if expected and x_api_key != expected:
+        raise HTTPException(status_code=401, detail="Invalid or missing X-API-Key header")
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -265,7 +273,7 @@ def pilot() -> dict[str, Any]:
     return asdict(result)
 
 
-@app.post("/pilot")
+@app.post("/pilot", dependencies=[Depends(verify_api_key)])
 def pilot_custom(req: PilotRequest) -> dict[str, Any]:
     """Pilot evaluation over uploaded signals, with real outcome events when given."""
     events = [parse_event(e) for e in req.events] if req.events is not None else _sample_events()
@@ -275,7 +283,7 @@ def pilot_custom(req: PilotRequest) -> dict[str, Any]:
     return asdict(result)
 
 
-@app.post("/ingest")
+@app.post("/ingest", dependencies=[Depends(verify_api_key)])
 def ingest(req: IngestRequest) -> dict[str, Any]:
     """Parse raw uploaded signals (.ics calendar or .jsonl event log) into events."""
     text = req.text.strip()
@@ -299,7 +307,7 @@ def ingest(req: IngestRequest) -> dict[str, Any]:
     return {"format": "jsonl", "events": [asdict(e) for e in parsed]}
 
 
-@app.post("/analyze")
+@app.post("/analyze", dependencies=[Depends(verify_api_key)])
 def analyze(req: AnalyzeRequest) -> dict[str, Any]:
     events = [parse_event(e) for e in req.events]
     tasks = _to_tasks(req.tasks)
@@ -330,7 +338,7 @@ def analyze(req: AnalyzeRequest) -> dict[str, Any]:
     return payload
 
 
-@app.post("/midday")
+@app.post("/midday", dependencies=[Depends(verify_api_key)])
 def midday(req: MiddayRequest) -> dict[str, Any]:
     events = [parse_event(e) for e in req.events]
     tasks = _to_tasks(req.tasks)
@@ -374,7 +382,7 @@ def midday(req: MiddayRequest) -> dict[str, Any]:
     return result
 
 
-@app.post("/approve")
+@app.post("/approve", dependencies=[Depends(verify_api_key)])
 def approve(req: ApproveRequest) -> dict[str, Any]:
     with _PLANS_LOCK:
         stored = PLANS.get(req.plan_id)
@@ -457,7 +465,7 @@ def approve(req: ApproveRequest) -> dict[str, Any]:
         }
 
 
-@app.post("/feedback")
+@app.post("/feedback", dependencies=[Depends(verify_api_key)])
 def feedback(req: FeedbackRequest) -> dict[str, Any]:
     with _PLANS_LOCK:
         stored = PLANS.get(req.plan_id)
@@ -473,7 +481,7 @@ def feedback(req: FeedbackRequest) -> dict[str, Any]:
         return {"plan_id": req.plan_id, "audit": record.__dict__}
 
 
-@app.get("/plan/{plan_id}/export.ics")
+@app.get("/plan/{plan_id}/export.ics", dependencies=[Depends(verify_api_key)])
 def export_plan_ics(plan_id: str, tzid: Optional[str] = None) -> Response:
     with _PLANS_LOCK:
         stored = PLANS.get(plan_id)
@@ -498,7 +506,7 @@ def export_plan_ics(plan_id: str, tzid: Optional[str] = None) -> Response:
     )
 
 
-@app.get("/plan/{plan_id}/export.csv")
+@app.get("/plan/{plan_id}/export.csv", dependencies=[Depends(verify_api_key)])
 def export_plan_csv(plan_id: str) -> PlainTextResponse:
     with _PLANS_LOCK:
         stored = PLANS.get(plan_id)
@@ -513,30 +521,30 @@ def export_plan_csv(plan_id: str) -> PlainTextResponse:
     )
 
 
-@app.get("/history")
+@app.get("/history", dependencies=[Depends(verify_api_key)])
 def history() -> dict[str, Any]:
     scores = load_history(HISTORY_PATH)
     return {"history": scores}
 
 
-@app.post("/history")
+@app.post("/history", dependencies=[Depends(verify_api_key)])
 def record_history(req: HistoryRequest) -> dict[str, Any]:
     append_score(HISTORY_PATH, req.score)
     return {"history": load_history(HISTORY_PATH)}
 
 
-@app.delete("/history")
+@app.delete("/history", dependencies=[Depends(verify_api_key)])
 def delete_history() -> dict[str, Any]:
     removed = clear_history(HISTORY_PATH)
     return {"removed": removed}
 
 
-@app.get("/audit")
+@app.get("/audit", dependencies=[Depends(verify_api_key)])
 def audit() -> dict[str, Any]:
     return {"records": load_audit(AUDIT_PATH)}
 
 
-@app.delete("/audit")
+@app.delete("/audit", dependencies=[Depends(verify_api_key)])
 def delete_audit() -> dict[str, Any]:
     removed = clear_audit(AUDIT_PATH)
     return {"removed": removed}

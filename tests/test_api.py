@@ -10,6 +10,7 @@ installed, so the stdlib-only CI keeps passing:
 
 from __future__ import annotations
 
+import os
 import sys
 import tempfile
 import unittest
@@ -700,6 +701,26 @@ class TestApi(unittest.TestCase):
         self.assertTrue(data["has_observed"])
         self.assertIsNotNone(data["observed"])
         self.assertIn("observed", data["summary"])
+
+    def test_api_key_authentication(self) -> None:
+        """When LOADGUARD_API_KEY is configured, protected routes require valid X-API-Key."""
+        with mock.patch.dict(os.environ, {"LOADGUARD_API_KEY": "secret-token-123"}):
+            # Health is always public
+            resp_health = self.client.get("/health")
+            self.assertEqual(resp_health.status_code, 200)
+
+            # Protected endpoint without header -> 401
+            resp_unauth = self.client.get("/history")
+            self.assertEqual(resp_unauth.status_code, 401)
+            self.assertEqual(resp_unauth.json()["detail"], "Invalid or missing X-API-Key header")
+
+            # Protected endpoint with wrong header -> 401
+            resp_wrong = self.client.get("/history", headers={"X-API-Key": "wrong-token"})
+            self.assertEqual(resp_wrong.status_code, 401)
+
+            # Protected endpoint with valid header -> 200
+            resp_auth = self.client.get("/history", headers={"X-API-Key": "secret-token-123"})
+            self.assertEqual(resp_auth.status_code, 200)
 
 
 if __name__ == "__main__":

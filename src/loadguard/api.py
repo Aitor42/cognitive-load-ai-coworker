@@ -284,6 +284,16 @@ def verify_api_key(x_api_key: Optional[str] = Header(None, alias="X-API-Key")) -
         raise HTTPException(status_code=401, detail="Invalid or missing X-API-Key header")
 
 
+def check_destructive_allowed() -> None:
+    """Ensure destructive operations are permitted in the current environment."""
+    val = os.environ.get("LOADGUARD_ALLOW_DELETE", "true").lower()
+    if val in ("false", "0", "no", "off"):
+        raise HTTPException(
+            status_code=403,
+            detail="Destructive DELETE operations are disabled in this environment",
+        )
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -598,7 +608,7 @@ def record_history(req: HistoryRequest) -> dict[str, Any]:
     return {"history": load_history(HISTORY_PATH)}
 
 
-@app.delete("/history", dependencies=[Depends(verify_api_key)])
+@app.delete("/history", dependencies=[Depends(verify_api_key), Depends(check_destructive_allowed)])
 def delete_history() -> dict[str, Any]:
     removed = clear_history(HISTORY_PATH)
     return {"removed": removed}
@@ -609,7 +619,7 @@ def audit() -> dict[str, Any]:
     return {"records": load_audit(AUDIT_PATH)}
 
 
-@app.delete("/audit", dependencies=[Depends(verify_api_key)])
+@app.delete("/audit", dependencies=[Depends(verify_api_key), Depends(check_destructive_allowed)])
 def delete_audit() -> dict[str, Any]:
     removed = clear_audit(AUDIT_PATH)
     return {"removed": removed}

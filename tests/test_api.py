@@ -791,6 +791,21 @@ class TestApi(unittest.TestCase):
         self.assertIn("telemetry", data_mid)
         self.assertEqual(data_mid["telemetry"]["request_id"], custom_id)
 
+    def test_destructive_delete_protection(self) -> None:
+        """When LOADGUARD_ALLOW_DELETE=false, DELETE endpoints return 403 Forbidden."""
+        with mock.patch.dict(os.environ, {"LOADGUARD_ALLOW_DELETE": "false"}):
+            resp_del_hist = self.client.delete("/history")
+            self.assertEqual(resp_del_hist.status_code, 403)
+            self.assertIn(
+                "Destructive DELETE operations are disabled", resp_del_hist.json()["detail"]
+            )
+
+            resp_del_audit = self.client.delete("/audit")
+            self.assertEqual(resp_del_audit.status_code, 403)
+            self.assertIn(
+                "Destructive DELETE operations are disabled", resp_del_audit.json()["detail"]
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

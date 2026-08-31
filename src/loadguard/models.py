@@ -86,6 +86,8 @@ class Task:
     deadline: Optional[float] = None  # epoch seconds, optional
     status: str = TODO
     assignee: Optional[str] = None  # worker id the task is assigned to, optional
+    locked: bool = False  # fixed commitment constraint
+    locked_start_time: Optional[str] = None  # fixed start time HH:MM
 
     def __post_init__(self) -> None:
         try:

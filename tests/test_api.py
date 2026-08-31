@@ -149,17 +149,21 @@ class TestApi(unittest.TestCase):
             self.assertIn("TRIGGER:-PT15M", ics)
 
     def test_export_ics_respects_existing_events(self) -> None:
-        """Exported calendar blocks must not collide with stored existing meetings."""
-        events = [
-            {"timestamp": 1700000000.0, "kind": "meeting", "duration_minutes": 60.0, "meta": {}}
-        ]
-        tasks = [{"id": "t1", "title": "Deep Task", "priority": 5, "duration_minutes": 30.0}]
+        """Exported calendar blocks must fall on the same day as the events."""
+        past_ts = 1_700_000_000.0  # 2023-11-14T22:13:20Z
+        events = [{"timestamp": past_ts, "kind": "meeting", "duration_minutes": 30.0, "meta": {}}]
+        tasks = [{"id": "t1", "title": "Focus Work", "priority": 5, "duration_minutes": 45.0}]
         resp = self.client.post("/analyze", json={"events": events, "tasks": tasks})
         self.assertEqual(resp.status_code, 200)
         pid = resp.json()["plan_id"]
         ics = self.client.get(f"/plan/{pid}/export.ics").text
-        # Event ends at 1700003600 (23:13:20Z), focus block/task must start at or after 23:13:20Z
-        self.assertIn("DTSTART:20231114T231320Z", ics)
+        self.assertIn("BEGIN:VEVENT", ics, "ICS was empty — start_epoch anchoring is broken")
+        import re
+        from datetime import datetime, timezone as tz
+
+        for ts_str in re.findall(r"DTSTART:(\d{8}T\d{6}Z)", ics):
+            dt = datetime.strptime(ts_str, "%Y%m%dT%H%M%SZ").replace(tzinfo=tz.utc)
+            self.assertEqual(dt.date().isoformat(), "2023-11-14")
 
     def test_export_ics_accepts_tzid_query_param(self) -> None:
         data = self._analyze()
@@ -723,6 +727,94 @@ class TestApi(unittest.TestCase):
         self.assertEqual(data["tasks"][0]["title"], "Long")
         self.assertEqual(data["tasks"][0]["priority"], 4)
 
+    def test_ingest_ics_date_filter_matches(self) -> None:
+        """Supplying the correct date returns only that day's events."""
+        ics_text = (
+            "BEGIN:VCALENDAR\nVERSION:2.0\n"
+            "BEGIN:VEVENT\nUID:1\nDTSTART:20260817T090000Z\nDTEND:20260817T100000Z\n"
+            "SUMMARY:Standup\nEND:VEVENT\n"
+            "BEGIN:VEVENT\nUID:2\nDTSTART:20260818T090000Z\nDTEND:20260818T100000Z\n"
+            "SUMMARY:Other day\nEND:VEVENT\n"
+            "END:VCALENDAR\n"
+        )
+        resp = self.client.post(
+            "/ingest", json={"text": ics_text, "format": "ics", "date": "2026-08-17"}
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(len(data["events"]), 1)
+        self.assertEqual(data["events"][0]["meta"]["title"], "Standup")
+        self.assertEqual(data["analyzed_date"], "2026-08-17")
+        self.assertEqual(data["total_events_in_file"], 2)
+
+    def test_ingest_ics_date_filter_no_match(self) -> None:
+        """A date with no events returns an empty list and metadata."""
+        ics_text = (
+            "BEGIN:VCALENDAR\nVERSION:2.0\n"
+            "BEGIN:VEVENT\nUID:1\nDTSTART:20260817T090000Z\nDTEND:20260817T100000Z\n"
+            "SUMMARY:Standup\nEND:VEVENT\n"
+            "END:VCALENDAR\n"
+        )
+        resp = self.client.post(
+            "/ingest", json={"text": ics_text, "format": "ics", "date": "2026-08-18"}
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["events"], [])
+        self.assertEqual(data["analyzed_date"], "2026-08-18")
+        self.assertEqual(data["total_events_in_file"], 1)
+
+    def test_ingest_ics_default_date_is_today(self) -> None:
+        """When no date is supplied, it defaults to the events date or today."""
+        from datetime import datetime
+
+        ics_text = (
+            "BEGIN:VCALENDAR\nVERSION:2.0\n"
+            "BEGIN:VEVENT\nUID:1\nDTSTART:20260817T090000Z\nDTEND:20260817T100000Z\n"
+            "SUMMARY:Standup\nEND:VEVENT\n"
+            "END:VCALENDAR\n"
+        )
+        resp = self.client.post("/ingest", json={"text": ics_text, "format": "ics"})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["analyzed_date"], "2026-08-17")
+        self.assertEqual(data["total_events_in_file"], 1)
+
+        # Empty calendar defaults to today
+        today = datetime.now().strftime("%Y-%m-%d")
+        empty_ics = "BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR\n"
+        resp_empty = self.client.post("/ingest", json={"text": empty_ics, "format": "ics"})
+        self.assertEqual(resp_empty.status_code, 200)
+        self.assertEqual(resp_empty.json()["analyzed_date"], today)
+
+    def test_ingest_ics_multi_day_only_returns_requested_day(self) -> None:
+        """A full multi-day calendar is filtered down to a single requested day."""
+        ics_text = (
+            "BEGIN:VCALENDAR\nVERSION:2.0\n"
+            "BEGIN:VEVENT\nUID:1\nDTSTART:20260817T090000Z\nDTEND:20260817T100000Z\n"
+            "SUMMARY:Day1\nEND:VEVENT\n"
+            "BEGIN:VEVENT\nUID:2\nDTSTART:20260818T100000Z\nDTEND:20260818T110000Z\n"
+            "SUMMARY:Day2\nEND:VEVENT\n"
+            "BEGIN:VEVENT\nUID:3\nDTSTART:20260819T140000Z\nDTEND:20260819T150000Z\n"
+            "SUMMARY:Day3\nEND:VEVENT\n"
+            "END:VCALENDAR\n"
+        )
+        resp = self.client.post(
+            "/ingest", json={"text": ics_text, "format": "ics", "date": "2026-08-18"}
+        )
+        data = resp.json()
+        self.assertEqual(len(data["events"]), 1)
+        self.assertEqual(data["events"][0]["meta"]["title"], "Day2")
+        self.assertEqual(data["total_events_in_file"], 3)
+
+    def test_filter_events_to_date_invalid_date_returns_all(self) -> None:
+        """_filter_events_to_date returns the original list on a bad date string."""
+        from loadguard.api import _filter_events_to_date
+
+        events = [{"timestamp": 1755820800.0}]  # 2026-08-17
+        result = _filter_events_to_date(events, "not-a-date")
+        self.assertEqual(result, events)
+
     def test_plans_persist_to_disk(self) -> None:
         data = self._analyze()
         pid = data["plan_id"]
@@ -866,6 +958,18 @@ class TestApi(unittest.TestCase):
         persisted = _load_persisted_plans()
         self.assertIn(pid, persisted)
         self.assertEqual(persisted[pid]["payload"]["plan"]["status"], "accepted")
+
+    def test_filter_events_to_date_missing_or_corrupt_timestamps(self) -> None:
+        from loadguard.api import _filter_events_to_date
+
+        events = [
+            {"timestamp": None},
+            {"timestamp": "corrupt_timestamp"},
+            {"timestamp": 1e25},  # overflow
+            {"no_timestamp_key": True},
+        ]
+        result = _filter_events_to_date(events, "2026-08-17")
+        self.assertEqual(result, [])
 
 
 if __name__ == "__main__":

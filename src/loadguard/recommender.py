@@ -159,7 +159,11 @@ def build_plan(
     for task in ordered:
         if task.status != TODO:
             continue
-        if task.priority <= delegate_max and "delegate" not in rejected_actions:
+        if (
+            task.priority <= delegate_max
+            and not getattr(task, "locked", False)
+            and "delegate" not in rejected_actions
+        ):
             if is_late_day:
                 rationale = (
                     f"Priority {task.priority}/5 and load is {level} (late-day protection); "

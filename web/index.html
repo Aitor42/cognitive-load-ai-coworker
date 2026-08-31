@@ -78,6 +78,26 @@ li:last-child{border-bottom:0}
 details.section{background:#111827;border:1px solid #1f2937;border-radius:12px;padding:16px 20px;margin-top:20px}
 details.section summary{cursor:pointer;font-size:15px;color:#d1d5db;font-weight:600}
 details.section[open] summary{margin-bottom:12px}
+
+/* Onboarding Tour Styling — Compact & Un-obscuring */
+.tour-backdrop{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);pointer-events:none;z-index:9997;transition:opacity .2s ease}
+.tour-modal{position:fixed;width:90%;max-width:380px;background:#111827;border:1px solid #374151;border-radius:12px;padding:14px 18px;z-index:9999;box-shadow:0 10px 25px -5px rgba(0,0,0,0.7),0 0 15px rgba(37,99,235,0.4);color:#e5e7eb;transition:top .25s ease, bottom .25s ease, transform .25s ease}
+.tour-modal.pos-center{top:50%;left:50%;transform:translate(-50%,-50%)}
+.tour-modal.pos-bottom{top:auto;bottom:20px;left:50%;transform:translateX(-50%)}
+.tour-modal.pos-top{top:20px;bottom:auto;left:50%;transform:translateX(-50%)}
+.tour-header{display:flex;justify-content:space-between;align-items:center}
+.tour-step-badge{font-size:10px;text-transform:uppercase;font-weight:700;color:#93c5fd;background:rgba(37,99,235,0.2);padding:2px 8px;border-radius:999px;border:1px solid #2563eb}
+.tour-title{font-size:16px;font-weight:700;color:#f3f4f6;margin:6px 0 4px}
+.tour-body{font-size:13px;line-height:1.5;color:#d1d5db}
+.tour-microcopy{font-size:11px;color:#9ca3af;background:#1f2937;padding:6px 10px;border-radius:6px;border-left:3px solid #2563eb;margin:8px 0}
+.tour-checklist{background:#0f172a;border:1px solid #1f2937;border-radius:6px;padding:8px 10px;margin:8px 0}
+.tour-checklist-title{font-size:11px;font-weight:700;color:#93c5fd;text-transform:uppercase;margin-bottom:4px}
+.tour-checklist-item{font-size:12px;margin:3px 0;display:flex;align-items:center;gap:6px}
+.tour-checklist-item.done{color:#34d399}
+.tour-footer{display:flex;justify-content:space-between;align-items:center;margin-top:10px;border-top:1px solid #1f2937;padding-top:10px}
+.tour-progress-bar{height:3px;background:#1f2937;border-radius:2px;width:100%;margin-bottom:8px;overflow:hidden}
+.tour-progress-fill{height:100%;background:#2563eb;transition:width .3s ease}
+.tour-highlight{outline:3px solid #2563eb !important;outline-offset:4px;position:relative;z-index:9998 !important;box-shadow:0 0 0 9999px rgba(0,0,0,0.55),0 0 15px rgba(37,99,235,0.9) !important;border-radius:6px}
 </style>
 </head>
 <body>
@@ -86,7 +106,7 @@ details.section[open] summary{margin-bottom:12px}
 <div class="sub">The AI co-worker whose job is to protect you from the other AI co-workers · IBM AI Builders Challenge 2026</div>
 
 <div class="toolbar">
-  <select id="scenario" onchange="run()">
+  <select id="scenario" onchange="onScenarioChange()">
     <option value="overload">Scenario: overload morning</option>
     <option value="balanced">Scenario: balanced day</option>
     <option value="calm">Scenario: calm day</option>
@@ -100,13 +120,44 @@ details.section[open] summary{margin-bottom:12px}
   </select>
   <button onclick="run()" id="runBtn">Run analysis</button>
   <input type="file" id="fileInput" accept=".ics,.jsonl" style="display:none" onchange="handleFileUpload(event)">
-  <button class="ghost" onclick="document.getElementById('fileInput').click()">📁 Upload my signals (.ics / .jsonl)</button>
+  <button class="ghost" id="uploadBtn" onclick="document.getElementById('fileInput').click()">📁 Upload Google Calendar (.ics) or signals (.jsonl)</button>
+  <button class="ghost" id="taskMgrBtn" onclick="toggleTaskManager()">📝 Manage My Tasks</button>
   <button class="ghost" onclick="middayReview()" id="middayBtn" disabled>Midday re-organization</button>
   <button class="ghost" onclick="saveToBaseline()" id="saveBaseline" disabled>Save today's score to baseline</button>
   <button class="ghost" onclick="loadHistory()">Show baseline history</button>
-  <button class="ghost hidden" id="backDemo" onclick="backToDemo()">↩ Back to demo</button>
+  <button class="ghost" onclick="startTour(true)">❓ Tour / Help</button>
 </div>
 <div id="historyBox" class="meta hidden" style="background:#111827;border:1px solid #1f2937;border-radius:8px;padding:12px;margin:12px 0"></div>
+<div id="icsDateBar" class="hidden" style="background:#111827;border:1px solid #2563eb;border-radius:8px;padding:10px 14px;margin:8px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+  <span style="font-size:13px;color:#93c5fd">📅 Analysing calendar for:</span>
+  <input type="date" id="icsDatePicker" style="background:#1f2937;color:#e5e7eb;border:1px solid #374151;border-radius:6px;padding:5px 8px;font-size:13px">
+  <button class="ghost" style="padding:5px 12px;font-size:13px" onclick="reanalyzeIcs()">Re-analyse this date</button>
+  <span id="icsEventCount" style="font-size:12px;color:#57606a"></span>
+</div>
+<div id="taskManagerBox" class="card hidden" style="margin:12px 0">
+  <h2>📝 Task List Manager</h2>
+  <div class="meta" style="margin-bottom:10px">Calendar signals (.ics) control your Cognitive Load Score. LoadGuard resequences your tasks below according to your load level and deadlines.</div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+    <input type="text" id="newTaskTitle" placeholder="Task title (e.g. Finish Q3 Report)" style="flex:2;background:#1f2937;color:#e5e7eb;border:1px solid #374151;border-radius:6px;padding:6px 10px;font-size:13px">
+    <select id="newTaskPriority" style="background:#1f2937;color:#e5e7eb;border:1px solid #374151;border-radius:6px;padding:6px;font-size:13px">
+      <option value="5">P5 (Critical)</option>
+      <option value="4">P4 (High)</option>
+      <option value="3" selected>P3 (Medium)</option>
+      <option value="2">P2 (Low)</option>
+      <option value="1">P1 (Minor)</option>
+    </select>
+    <input type="number" id="newTaskDuration" value="30" min="5" max="240" placeholder="Min" style="width:70px;background:#1f2937;color:#e5e7eb;border:1px solid #374151;border-radius:6px;padding:6px;font-size:13px">
+    <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#93c5fd;cursor:pointer">
+      <input type="checkbox" id="newTaskLockCheck" onchange="document.getElementById('newTaskLockTime').classList.toggle('hidden', !this.checked)"> 🔒 Lock time
+    </label>
+    <input type="time" id="newTaskLockTime" value="10:00" class="hidden" style="background:#1f2937;color:#e5e7eb;border:1px solid #374151;border-radius:6px;padding:5px;font-size:12px">
+    <button class="green" onclick="addNewTask()" style="padding:6px 12px;font-size:13px">+ Add Task</button>
+    <button class="ghost" onclick="deriveTasksFromCalendar()" style="padding:6px 12px;font-size:13px">⚡ Use Calendar Event Titles as Tasks</button>
+    <button class="ghost" onclick="resetTasksToSample()" style="padding:6px 12px;font-size:13px">Reset Sample Tasks</button>
+    <button class="red" onclick="clearAllTasks()" style="padding:6px 12px;font-size:13px">Clear All</button>
+  </div>
+  <div id="taskListContent"></div>
+</div>
 <div class="meta" id="modelChips"></div>
 <div class="err" id="err"></div>
 <div id="out"></div>
@@ -122,7 +173,7 @@ const ABSENCE_LABEL={vacation:"on vacation",leave:"on leave"};
 const DRIVER_KEY={"context switches per hour":"context_switches_per_hour","meeting density":"meeting_ratio",
 "notification rate":"notification_rate","focus time":"focus_ratio","multitasking":"multitasking_index"};
 let PLAN_ID=null; let LAST_SCORE=null; let EVENTS=[]; let CURRENT_PLAN=[]; let WORKERS=[]; let TASKS=[];
-let UPLOADED_MODE=false;
+let ICS_TEXT=null; let ICS_FMT=null;  // retained so the user can re-analyse a different date
 
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 function gauge(s){const c=s<50?"#34d399":s<75?"#fbbf24":"#f87171";
@@ -184,11 +235,10 @@ function modelChipsHtml(r){
   const pChip=r.plan.proposed_by&&r.plan.proposed_by!=="deterministic"?"granite":"det";
   const gChip=guard==="granite-guardian"?"ok":"det";
   const roleChip=r.role?`<span class="chip ok">Role: ${esc(r.role)}</span>`:"";
-  const srcChip=UPLOADED_MODE?`<span class="chip ok">📁 Your calendar</span>`:"";
   return `<span class="chip ${pChip}">Decision: ${esc(proposed)}</span>
     <span class="chip ${gChip}">Guardian: ${esc(guard)}</span>
     <span class="chip">Narrator: ${esc(narrator)}</span>
-    ${roleChip}${srcChip}
+    ${roleChip}
     <span class="chip ${esc(r.plan.status)}">Status: ${esc(r.plan.status)}</span>`;
 }
 
@@ -234,28 +284,37 @@ function availabilityHtml(workers){
   }).join("")}</ul>`;
 }
 
+let IS_CUSTOM_EVENTS=false;
+
+function onScenarioChange(){
+  IS_CUSTOM_EVENTS=false;
+  const bar=document.getElementById("icsDateBar");
+  if(bar) bar.classList.add("hidden");
+  run();
+}
+
 async function run(){
+  const datePicker = document.getElementById("icsDatePicker");
+  if (datePicker && !datePicker.value) {
+    datePicker.value = new Date().toISOString().slice(0, 10);
+  }
   document.getElementById("err").textContent="";
   const btn=document.getElementById("runBtn");
   btn.disabled=true;
   const scenario=document.getElementById("scenario").value;
   const role=document.getElementById("role").value || undefined;
   try{
-    if(UPLOADED_MODE){
-      // Re-analyze uploaded data (scenario selector is ignored in upload mode).
-      const hist=await api("/history");
-      const r=await api("/analyze",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({events:EVENTS,tasks:TASKS,history:hist.history,workers:WORKERS,role:role})});
-      render(r);
-    }else{
+    const hist=await api("/history");
+    if(!IS_CUSTOM_EVENTS || !EVENTS || !EVENTS.length){
       const s=await api("/sample");
       const events=transformEvents(s.events,scenario);
-      EVENTS=events; WORKERS=s.workers||[]; TASKS=s.tasks||[];
-      const hist=await api("/history");
-      const r=await api("/analyze",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({events:events,tasks:TASKS,history:hist.history,workers:WORKERS,role:role})});
-      render(r);
+      EVENTS=events; WORKERS=s.workers||[];
+      if(!TASKS||!TASKS.length) TASKS=s.tasks||[];
     }
+    const r=await api("/analyze",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({events:EVENTS,tasks:TASKS,history:hist.history,workers:WORKERS,role:role,window_minutes:IS_CUSTOM_EVENTS?480:undefined})});
+    render(r);
+    renderTaskManager();
   }catch(e){
     document.getElementById("err").textContent = e.message==="Failed to fetch"
       ? "⚠ Cannot reach the API — run: pip install -r requirements.txt && python app.py"
@@ -269,31 +328,72 @@ async function handleFileUpload(ev){
   const file=ev.target.files&&ev.target.files[0];
   if(!file) return;
   document.getElementById("err").textContent="";
-  const btn=document.getElementById("fileInput");
   const uploadBtn=document.querySelector("button[onclick*='fileInput']");
   if(uploadBtn) uploadBtn.disabled=true;
   try{
     const text=await file.text();
     const fmt=file.name.toLowerCase().endsWith(".ics")?"ics":"jsonl";
-    const ing=await api("/ingest",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({text,format:fmt})});
+    ICS_TEXT=text; ICS_FMT=fmt;
+    const today=new Date().toISOString().slice(0,10);
+    const pickerVal = document.getElementById("icsDatePicker") ? document.getElementById("icsDatePicker").value : null;
+    const initialDate = pickerVal || today;
+    let body = fmt==="ics"?{text,format:fmt,date:initialDate}:{text,format:fmt};
+    let ing = await api("/ingest",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(body)});
+
+    if(fmt==="ics" && (!ing.events || !ing.events.length) && ing.total_events_in_file > 0){
+      const m = text.match(/DTSTART(?:;[^:]*)?:(\d{8})/i);
+      if(m && m[1]){
+        const dStr = m[1].slice(0,4) + "-" + m[1].slice(4,6) + "-" + m[1].slice(6,8);
+        body = {text, format: fmt, date: dStr};
+        ing = await api("/ingest",{method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify(body)});
+      }
+    }
     if(!ing.events.length){
-      document.getElementById("err").textContent="⚠ No events found in that file.";
+      const bar=document.getElementById("icsDateBar");
+      if(fmt==="ics"){
+        document.getElementById("icsDatePicker").value=ing.analyzed_date||today;
+        document.getElementById("icsEventCount").textContent=
+          `0 events found for ${ing.analyzed_date||today} (${ing.total_events_in_file||0} total in file) — pick another date`;
+        bar.classList.remove("hidden");
+      }
+      document.getElementById("err").textContent="⚠ No events found for "+
+        (ing.analyzed_date||"that date")+". Pick another date above or check your calendar.";
       return;
     }
-    EVENTS=ing.events;
-    // Use tasks derived from the uploaded calendar when available;
-    // fall back to empty task list (not demo tasks) to avoid confusion.
-    TASKS=(ing.tasks&&ing.tasks.length)?ing.tasks:[];
-    // Workers are not present in uploaded calendars; load from sample.
     const s=await api("/sample");
-    WORKERS=s.workers||[];
-    UPLOADED_MODE=true;
+    EVENTS=ing.events; WORKERS=s.workers||[];
+    IS_CUSTOM_EVENTS=true;
+
+    // Derive tasks from uploaded .ics event titles if user hasn't defined custom tasks yet
+    const calTasks=(ing.events||[]).filter(e=>e.meta&&e.meta.title&&e.meta.title.trim()).map((e,idx)=>({
+      id:"cal_task_"+idx+"_"+Math.random().toString(36).substr(2,4),
+      title:e.meta.title.trim(),
+      priority:3,
+      duration_minutes:e.duration_minutes||30,
+      status:"todo"
+    }));
+
+    if(!TASKS || !TASKS.length || TASKS.some(t => t.id === "t1" || t.id === "t2" || t.id === "t3")){
+      TASKS = calTasks.length > 0 ? calTasks : (s.tasks||[]);
+    }
+
+    if(fmt==="ics"){
+      const bar=document.getElementById("icsDateBar");
+      document.getElementById("icsDatePicker").value=ing.analyzed_date||today;
+      document.getElementById("icsEventCount").textContent=
+        `${ing.events.length} event(s) from ${ing.analyzed_date||today} · ${ing.total_events_in_file||0} total in file`;
+      bar.classList.remove("hidden");
+    } else {
+      document.getElementById("icsDateBar").classList.add("hidden");
+    }
     const hist=await api("/history");
-    const role=document.getElementById("role").value || undefined;
+    const role=document.getElementById("role").value||undefined;
     const r=await api("/analyze",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({events:EVENTS,tasks:TASKS,history:hist.history,workers:WORKERS,role:role})});
+      body:JSON.stringify({events:EVENTS,tasks:TASKS,history:hist.history,workers:WORKERS,role:role,window_minutes:480})});
     render(r);
+    renderTaskManager();
   }catch(e){
     document.getElementById("err").textContent = e.message==="Failed to fetch"
       ? "⚠ Cannot reach the API — run: pip install -r requirements.txt && python app.py"
@@ -304,10 +404,162 @@ async function handleFileUpload(ev){
   ev.target.value="";
 }
 
-function backToDemo(){
-  UPLOADED_MODE=false;
-  document.getElementById("backDemo").classList.add("hidden");
-  run();
+async function reanalyzeIcs(){
+  if(!ICS_TEXT) return;
+  document.getElementById("err").textContent="";
+  const chosenDate=document.getElementById("icsDatePicker").value;
+  if(!chosenDate) return;
+  try{
+    const ing=await api("/ingest",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({text:ICS_TEXT,format:"ics",date:chosenDate})});
+    if(!ing.events.length){
+      document.getElementById("icsEventCount").textContent=
+        `0 events on ${chosenDate} (${ing.total_events_in_file||0} total in file)`;
+      document.getElementById("err").textContent="⚠ No events found for "+chosenDate+". Try a different date.";
+      return;
+    }
+    const s=await api("/sample");
+    EVENTS=ing.events; WORKERS=s.workers||[];
+    const calTasks=(ing.events||[]).filter(e=>e.meta&&e.meta.title&&e.meta.title.trim()).map((e,idx)=>({
+      id:"cal_task_"+idx+"_"+Math.random().toString(36).substr(2,4),
+      title:e.meta.title.trim(),
+      priority:3,
+      duration_minutes:e.duration_minutes||30,
+      status:"todo"
+    }));
+    if(!TASKS || !TASKS.length || TASKS.some(t => t.id === "t1" || t.id === "t2" || t.id === "t3")){
+      TASKS = calTasks.length > 0 ? calTasks : (s.tasks||[]);
+    }
+    document.getElementById("icsEventCount").textContent=
+      `${ing.events.length} event(s) on ${chosenDate} · ${ing.total_events_in_file||0} total in file`;
+    document.getElementById("err").textContent="";
+    const hist=await api("/history");
+    const role=document.getElementById("role").value||undefined;
+    const r=await api("/analyze",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({events:EVENTS,tasks:TASKS,history:hist.history,workers:WORKERS,role:role,window_minutes:480})});
+    render(r);
+    renderTaskManager();
+  }catch(e){
+    document.getElementById("err").textContent="⚠ "+e.message;
+  }
+}
+
+function deriveTasksFromCalendar(){
+  if(!EVENTS || !EVENTS.length){
+    document.getElementById("err").textContent = "⚠ Upload a calendar (.ics) file first to derive tasks.";
+    return;
+  }
+  const calTasks = (EVENTS||[]).filter(e=>e.meta&&e.meta.title&&e.meta.title.trim()).map((e,idx)=>({
+    id:"cal_task_"+idx+"_"+Math.random().toString(36).substr(2,4),
+    title:e.meta.title.trim(),
+    priority:3,
+    duration_minutes:e.duration_minutes||30,
+    status:"todo"
+  }));
+  if(calTasks.length > 0){
+    TASKS = calTasks;
+    renderTaskManager();
+    if(EVENTS&&EVENTS.length) reanalyze();
+  } else {
+    document.getElementById("err").textContent = "⚠ No event titles found in the loaded calendar events.";
+  }
+}
+
+function toggleTaskManager(){
+  const box=document.getElementById("taskManagerBox");
+  box.classList.toggle("hidden");
+  if(!box.classList.contains("hidden")){
+    renderTaskManager();
+  }
+}
+
+function toggleTaskLock(idx){
+  if(!TASKS || !TASKS[idx]) return;
+  const t = TASKS[idx];
+  t.locked = !t.locked;
+  if(t.locked && !t.locked_start_time){
+    t.locked_start_time = "10:00";
+  }
+  renderTaskManager();
+  if(EVENTS && EVENTS.length) reanalyze();
+}
+
+function updateTaskLockTime(idx, timeStr){
+  if(!TASKS || !TASKS[idx]) return;
+  TASKS[idx].locked_start_time = timeStr;
+  renderTaskManager();
+  if(EVENTS && EVENTS.length) reanalyze();
+}
+
+function renderTaskManager(){
+  const el=document.getElementById("taskListContent");
+  if(!TASKS||!TASKS.length){
+    el.innerHTML='<div class="meta">No active tasks in your list. Click "+ Add Task" above or "Reset Sample Tasks".</div>';
+    return;
+  }
+  el.innerHTML=`<ul>${TASKS.map((t,idx)=>{
+    const lockBadge = t.locked
+      ? `<span class="chip" style="font-size:11px;color:#facc15;border-color:#eab308;padding:1px 6px">🔒 Fixed: <input type="time" value="${esc(t.locked_start_time||'10:00')}" style="background:transparent;color:#facc15;border:0;font-size:11px" onchange="updateTaskLockTime(${idx}, this.value)"></span>`
+      : "";
+    return `<li>
+      <span class="badge do">P${t.priority||3}</span>
+      <div class="itembody">
+        <b>${esc(t.title)}</b> <span class="meta">(${t.duration_minutes||30} min)</span>
+        ${lockBadge}
+      </div>
+      <button class="ghost" style="padding:2px 8px;font-size:11px" onclick="toggleTaskLock(${idx})">${t.locked ? '🔓 Unlock' : '🔒 Lock Time'}</button>
+      <button class="red" style="padding:2px 8px;font-size:11px" onclick="deleteTask(${idx})">✕ Delete</button>
+    </li>`;
+  }).join("")}</ul>`;
+}
+
+function addNewTask(){
+  const title=document.getElementById("newTaskTitle").value.trim();
+  if(!title) return;
+  const priority=parseInt(document.getElementById("newTaskPriority").value,10)||3;
+  const duration=parseFloat(document.getElementById("newTaskDuration").value)||30;
+  const isLocked=document.getElementById("newTaskLockCheck").checked;
+  const lockTime=document.getElementById("newTaskLockTime").value || "10:00";
+  const newTask={
+    id:"user_task_"+Date.now()+"_"+Math.random().toString(36).substr(2,4),
+    title:title,
+    priority:priority,
+    duration_minutes:duration,
+    status:"todo",
+    locked: isLocked,
+    locked_start_time: isLocked ? lockTime : undefined
+  };
+  TASKS.push(newTask);
+  document.getElementById("newTaskTitle").value="";
+  renderTaskManager();
+  if(EVENTS&&EVENTS.length) reanalyze();
+}
+
+function deleteTask(idx){
+  TASKS.splice(idx,1);
+  renderTaskManager();
+  if(EVENTS&&EVENTS.length) reanalyze();
+}
+
+async function resetTasksToSample(){
+  const s=await api("/sample");
+  TASKS=s.tasks||[];
+  renderTaskManager();
+  if(EVENTS&&EVENTS.length) reanalyze();
+}
+
+function clearAllTasks(){
+  TASKS=[];
+  renderTaskManager();
+  if(EVENTS&&EVENTS.length) reanalyze();
+}
+
+async function reanalyze(){
+  const hist=await api("/history");
+  const role=document.getElementById("role").value || undefined;
+  const r=await api("/analyze",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({events:EVENTS,tasks:TASKS,history:hist.history,workers:WORKERS,role:role})});
+  render(r);
 }
 
 function render(r){
@@ -315,9 +567,6 @@ function render(r){
   document.getElementById("saveBaseline").disabled=false;
   document.getElementById("middayBtn").disabled=false;
   document.getElementById("modelChips").innerHTML=modelChipsHtml(r);
-  // Show/hide the back-to-demo button depending on mode.
-  const backBtn=document.getElementById("backDemo");
-  if(backBtn){if(UPLOADED_MODE) backBtn.classList.remove("hidden"); else backBtn.classList.add("hidden");}
 
   const lr=r.load_report,imp=r.impact;
   const top=topDriver(lr);
@@ -340,17 +589,156 @@ function render(r){
     `<div class="meta" style="margin-top:8px">Top contributor: <b>${esc(LABELS[top])}</b> · ${esc(lr.explanation)}</div>`+
     assumptionsHtml;
 
-  const itemRows=r.plan.items.map((i,idx)=>{
+function fmtMinToTime(mins) {
+  const h = Math.floor((mins % 1440) / 60);
+  const m = Math.floor(mins % 60);
+  return (h < 10 ? "0" + h : h) + ":" + (m < 10 ? "0" + m : m);
+}
+
+function parseTimeToMin(timeStr) {
+  if (!timeStr) return 540;
+  const parts = timeStr.split(":");
+  return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+}
+
+function getMeetingBusyIntervals(events, tasks) {
+  const busy = [];
+  if (events && events.length) {
+    const meetings = events.filter(e => e.kind === "meeting" && e.duration_minutes > 0);
+    meetings.forEach(e => {
+      const d = new Date(e.timestamp * 1000);
+      const startMin = d.getHours() * 60 + d.getMinutes();
+      const endMin = startMin + Math.round(e.duration_minutes);
+      const title = e.meta?.title || "Calendar Meeting";
+      busy.push({ startMin, endMin, title, isLocked: true });
+    });
+  }
+  if (tasks && tasks.length) {
+    tasks.filter(t => t.locked && t.locked_start_time).forEach(t => {
+      const startMin = parseTimeToMin(t.locked_start_time);
+      const dur = t.duration_minutes || 30;
+      const endMin = startMin + dur;
+      busy.push({ startMin, endMin, title: t.title, taskId: t.id, isLocked: true });
+    });
+  }
+  return busy.sort((a, b) => a.startMin - b.startMin);
+}
+
+function findNextFreeSlot(currMin, durMin, busyIntervals) {
+  let cursor = currMin;
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const b of busyIntervals) {
+      if (cursor < b.endMin && (cursor + durMin) > b.startMin) {
+        cursor = Math.max(cursor, b.endMin);
+        changed = true;
+      }
+    }
+  }
+  return cursor;
+}
+
+function computeScheduleTimes(items, tasks, events) {
+  const busy = getMeetingBusyIntervals(events || EVENTS, tasks || TASKS);
+  let currMin = 540; // 09:00 AM standard daily start time
+
+  const schedule = [];
+  for (let idx = 0; idx < items.length; idx++) {
+    const item = items[idx];
+    let dur = 30;
+    if (item.action === "focus_block") dur = 45;
+    else if (item.action === "break") dur = 15;
+    else if (item.action === "delegate") dur = 15;
+    else if (item.task_id) {
+      const t = (tasks || []).find(x => x.id === item.task_id);
+      if (t && t.duration_minutes) dur = t.duration_minutes;
+    }
+
+    const matchingTask = (tasks || []).find(x => x.id === item.task_id);
+    let startMin = currMin;
+    if (item.custom_start_time) {
+      startMin = parseTimeToMin(item.custom_start_time);
+    } else if (matchingTask && matchingTask.locked && matchingTask.locked_start_time) {
+      startMin = parseTimeToMin(matchingTask.locked_start_time);
+    } else {
+      startMin = findNextFreeSlot(currMin, dur, busy);
+    }
+
+    let endMin = startMin + dur;
+    if (item.custom_end_time) {
+      endMin = parseTimeToMin(item.custom_end_time);
+    }
+
+    const startStr = fmtMinToTime(startMin);
+    const endStr = fmtMinToTime(endMin);
+    const isLockedTask = matchingTask && matchingTask.locked;
+    schedule.push({ startStr, endStr, startMin, endMin, duration: endMin - startMin, isLocked: isLockedTask });
+    currMin = Math.max(currMin, endMin);
+  }
+  return schedule;
+}
+
+function toggleTimeEdit(idx) {
+  const el = document.getElementById("timeEditBox_" + idx);
+  if (el) el.classList.toggle("hidden");
+}
+
+function updateItemTime(idx) {
+  const sVal = document.getElementById("startTime_" + idx).value;
+  const eVal = document.getElementById("endTime_" + idx).value;
+  if (!sVal || !eVal) return;
+  if (CURRENT_PLAN && CURRENT_PLAN[idx]) {
+    CURRENT_PLAN[idx].custom_start_time = sVal;
+    CURRENT_PLAN[idx].custom_end_time = eVal;
+    const sMin = parseTimeToMin(sVal);
+    const eMin = parseTimeToMin(eVal);
+    if (eMin > sMin && idx + 1 < CURRENT_PLAN.length) {
+      if (!CURRENT_PLAN[idx + 1].custom_start_time) {
+        CURRENT_PLAN[idx + 1].custom_start_time = eVal;
+      }
+    }
+    renderPlanItems();
+  }
+}
+
+function renderPlanItems() {
+  if (!CURRENT_PLAN || !CURRENT_PLAN.length) return;
+  const scheduleTimes = computeScheduleTimes(CURRENT_PLAN, TASKS, EVENTS);
+  const container = document.getElementById("planItemsContainer");
+  if (!container) return;
+
+  container.innerHTML = CURRENT_PLAN.map((i, idx) => {
+    const timeInfo = scheduleTimes[idx];
     const assigneesHtml = (i.suggested_assignees && i.suggested_assignees.length)
       ? `<div style="margin-top:4px"><span class="meta" style="font-size:11px">Suggested teammates:</span> ${i.suggested_assignees.map(a=>`<span class="chip" style="font-size:11px;padding:2px 6px;margin-right:4px">${esc(a)}</span>`).join("")}</div>`
+      : "";
+    const lockChip = timeInfo.isLocked
+      ? `<span class="chip" style="font-size:11px;color:#facc15;border-color:#eab308;padding:1px 6px">🔒 Fixed</span>`
       : "";
     return `<li>
       <input type="checkbox" class="editcb hidden" data-idx="${idx}" checked>
       ${i.task_id?`<label title="Mark completed" style="cursor:pointer;margin-right:6px"><input type="checkbox" class="completedcb" data-task-id="${esc(i.task_id)}"> ✓</label>`:''}
       <span class="badge ${esc(i.action)}">${esc(i.action)}</span>
-      <div class="itembody"><b>${esc(i.title)}</b><div class="why">${esc(i.rationale)}</div>${assigneesHtml}</div>
+      <div class="itembody">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <b>${esc(i.title)}</b>
+          <span class="chip" style="font-size:11px;font-weight:600;color:#93c5fd;border-color:#2563eb;padding:1px 6px">🕒 ${timeInfo.startStr} – ${timeInfo.endStr}</span>
+          ${lockChip}
+          <button class="ghost" style="padding:1px 6px;font-size:11px" onclick="toggleTimeEdit(${idx})">✏️ Edit time</button>
+        </div>
+        <div id="timeEditBox_${idx}" class="hidden" style="margin-top:4px;display:inline-flex;align-items:center;gap:6px;background:#1f2937;padding:4px 8px;border-radius:6px;border:1px solid #374151">
+          <span style="font-size:11px;color:#9ca3af">Start:</span>
+          <input type="time" id="startTime_${idx}" value="${timeInfo.startStr}" style="background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:4px;padding:2px 4px;font-size:11px" onchange="updateItemTime(${idx})">
+          <span style="font-size:11px;color:#9ca3af">End:</span>
+          <input type="time" id="endTime_${idx}" value="${timeInfo.endStr}" style="background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:4px;padding:2px 4px;font-size:11px" onchange="updateItemTime(${idx})">
+        </div>
+        <div class="why">${esc(i.rationale)}</div>
+        ${assigneesHtml}
+      </div>
     </li>`;
   }).join("");
+}
 
   const status=esc(r.plan.status);
   const alerts=(r.reassignment_alerts||[]);
@@ -410,8 +798,8 @@ function render(r){
       </div>
     </div>
 
-    <div class="card" style="margin-top:20px"><h2>Proposed plan</h2><ul>${itemRows}</ul>
-      <div class="actions" id="planActions">
+    <div class="card" style="margin-top:20px"><h2>Proposed plan</h2><ul id="planItemsContainer"></ul>
+      <div class="actions">
         <button class="green" onclick="decide('accepted')" ${status!=="pending"?"disabled":""}>Accept plan</button>
         <button class="ghost" onclick="toggleEdit()" ${status!=="pending"?"disabled":""} id="editBtn">Edit plan</button>
         <button class="red" onclick="decide('rejected')" ${status!=="pending"?"disabled":""}>Reject</button>
@@ -450,6 +838,7 @@ function render(r){
     </details>
 
     <div class="disc" id="disclaimer">${esc(lr.disclaimer)}</div>`;
+  renderPlanItems();
   updateStatusLine(status);
   fetchPrivacy();
 }
@@ -485,6 +874,32 @@ function toggleEdit(){
   };
 }
 
+/**
+ * Attach client-computed schedule times (as epoch floats) to each plan item.
+ * The server's export_ics/export_tasks_csv will use these verbatim so the
+ * exported file exactly mirrors what the dashboard displayed.
+ *
+ * @param {Array} items  - CURRENT_PLAN items (mutated in place, copy passed to server)
+ * @returns {Array} shallow-copied items with scheduled_start / scheduled_end set
+ */
+function _attachScheduleTimes(items) {
+  const scheduleTimes = computeScheduleTimes(items, TASKS, EVENTS);
+  // Use today's local midnight as the epoch base so "09:30" → correct epoch
+  const todayBase = new Date();
+  todayBase.setHours(0, 0, 0, 0);
+  const baseEpoch = todayBase.getTime() / 1000; // seconds
+
+  return items.map((item, idx) => {
+    const t = scheduleTimes[idx];
+    if (!t) return { ...item };
+    return {
+      ...item,
+      scheduled_start: baseEpoch + t.startMin * 60,
+      scheduled_end:   baseEpoch + t.endMin   * 60,
+    };
+  });
+}
+
 async function saveEdit(){
   const boxes=document.querySelectorAll(".editcb");
   const kept=[],removed=[];
@@ -499,7 +914,7 @@ async function saveEdit(){
   try{
     const r=await api("/approve",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({plan_id:PLAN_ID,decision:"edited",items:kept,feedback:"removed: "+removed.join(", ")})});
-    document.querySelectorAll("#planActions button").forEach(b=>b.disabled=true);
+    document.querySelectorAll(".actions button").forEach(b=>b.disabled=true);
     updateStatusLine(r.status);
     if(r.impact){
       const imp=r.impact;
@@ -517,7 +932,7 @@ async function decide(decision){
   try{
     const body={plan_id:PLAN_ID,decision};
     const r=await api("/approve",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-    document.querySelectorAll("#planActions button").forEach(b=>b.disabled=true);
+    document.querySelectorAll(".actions button").forEach(b=>b.disabled=true);
     updateStatusLine(r.status);
   }catch(e){document.getElementById("err").textContent="⚠ "+e.message;}
 }
@@ -645,7 +1060,221 @@ async function deleteHistory(){
   }catch(e){document.getElementById("err").textContent="⚠ "+e.message;}
 }
 
-run();
+// Onboarding Tour Engine
+const TOUR_STEPS = [
+  {
+    target: null,
+    badge: "Step 1 of 7 · Mission",
+    title: "Welcome to LoadGuard 🧠",
+    body: "Modern AI tools multiply notifications and context switches. LoadGuard operates as an <b>attention guardian co-worker</b> in a 6-stage closed loop:<br><br><b>Sense → Diagnose → Granite Proposes → Validate → Human Approves → Act & Measure</b>.",
+    microcopy: "💡 <b>Core Value:</b> Protect your finite daily focus budget without sacrificing productivity.",
+    checklist: [
+      { text: "Learn LoadGuard's core mission", done: true },
+      { text: "Choose your job role profile", done: false },
+      { text: "Ingest your Google Calendar (.ics)", done: false },
+      { text: "Approve your day plan & export calendar", done: false }
+    ]
+  },
+  {
+    target: "#role",
+    badge: "Step 2 of 7 · Sensitivity",
+    title: "Choose Your Job Role Profile 👤",
+    body: "Different jobs handle interruptions differently! Select your role profile to tune scoring sensitivity:<br><br>• <b>Developer:</b> Focus-heavy (high penalty on focus loss)<br>• <b>Manager:</b> Meeting-dense (higher threshold for meetings & notifications)<br>• <b>Researcher:</b> Deep work protection<br>• <b>Support:</b> Interruption-dense",
+    microcopy: "⚡ <b>Microcopy:</b> Selecting a role dynamically adjusts sigmoid weights in the scoring engine.",
+    checklist: [
+      { text: "Learn LoadGuard's core mission", done: true },
+      { text: "Choose your job role profile", done: true },
+      { text: "Ingest your Google Calendar (.ics)", done: false },
+      { text: "Approve your day plan & export calendar", done: false }
+    ]
+  },
+  {
+    target: "#uploadBtn",
+    badge: "Step 3 of 7 · Signal Sensing",
+    title: "Ingest Your Real Calendar (.ics) 📁",
+    body: "LoadGuard is 100% local and privacy-first! Export your schedule as an <b>.ics file</b> from Google Calendar or Outlook and upload it here.<br><br>Only meeting counts, durations, and start times are captured—never message text, email content, or keystrokes.",
+    microcopy: "🔒 <b>Privacy Guarantee:</b> All calendar parsing and scoring happens locally on your computer.",
+    checklist: [
+      { text: "Learn LoadGuard's core mission", done: true },
+      { text: "Choose your job role profile", done: true },
+      { text: "Ingest your Google Calendar (.ics)", done: true },
+      { text: "Approve your day plan & export calendar", done: false }
+    ]
+  },
+  {
+    target: "#taskMgrBtn",
+    badge: "Step 4 of 7 · Task Resequencing",
+    title: "Manage & Auto-Derive Tasks 📝",
+    body: "Click <b>Manage My Tasks</b> to view or edit your to-do items. You can add custom tasks or click <b>⚡ Use Calendar Event Titles as Tasks</b> to instantly convert your calendar events into active work tasks!",
+    microcopy: "🎯 <b>Pro-Tip:</b> High-priority tasks (P5) are always protected; low-priority tasks (P1–P2) are candidates for delegation under high load.",
+    checklist: [
+      { text: "Learn LoadGuard's core mission", done: true },
+      { text: "Choose your job role profile", done: true },
+      { text: "Ingest your Google Calendar (.ics)", done: true },
+      { text: "Customize or auto-derive tasks", done: true }
+    ]
+  },
+  {
+    target: "#out",
+    badge: "Step 5 of 7 · Diagnosis",
+    title: "Explainable Cognitive Load Score 📊",
+    body: "LoadGuard calculates a <b>0–100 Cognitive Load Score</b> using 5 behavioral proxies:<br><br>1. <b>Context switches/hr</b> · 2. <b>Meeting density</b> · 3. <b>Notifications/hr</b> · 4. <b>Focus ratio</b> · 5. <b>Multitasking index</b>.<br><br>A compounding term amplifies load when meetings and interruptions overlap.",
+    microcopy: "⚖️ <b>Medical Disclaimer:</b> Cognitive Load Score is a behavioral proxy derived from counts and ratios, not a physiological measurement.",
+    checklist: [
+      { text: "Understand the 5 behavioral proxies", done: true },
+      { text: "Review compounding stress factors", done: true }
+    ]
+  },
+  {
+    target: "#out",
+    badge: "Step 6 of 7 · Decision Gate",
+    title: "IBM Granite Proposals & Safety Gate 🤖",
+    body: "IBM Granite proposes a calm day plan by resequencing tasks, delegating low-priority items, and inserting recovery breaks. A <b>deterministic safety gate</b> validates every proposal to ensure critical tasks are never lost and data is never invented.",
+    microcopy: "🛡️ <b>Safety First:</b> Dual-layer validation ensures 100% grounded proposals before showing them to you.",
+    checklist: [
+      { text: "Inspect proposed focus & break blocks", done: true },
+      { text: "Verify safety gate checks passed", done: true }
+    ]
+  },
+  {
+    target: "#out",
+    badge: "Step 7 of 7 · Action & Export",
+    title: "Approve Plan & Export Calendar 🗓️",
+    body: "You are always in control! Review the proposed plan and click <b>Accept</b>, <b>Edit</b>, or <b>Reject</b>.<br><br>Accepting automatically exports a protected <b>.ics calendar file</b> (with focus reminders) and a resequenced <b>tasks.csv</b> list ready for your workday!",
+    microcopy: "🎉 <b>You're All Set!</b> Click 'Complete Tour' to start protecting your attention budget.",
+    checklist: [
+      { text: "Complete onboarding setup walkthrough", done: true },
+      { text: "Start managing cognitive load", done: true }
+    ]
+  }
+];
+
+let CURRENT_TOUR_STEP = 0;
+
+function startTour(force = false) {
+  if (!force && localStorage.getItem("loadguard_tour_done") === "true") return;
+  CURRENT_TOUR_STEP = 0;
+  document.getElementById("tourBackdrop").classList.remove("hidden");
+  document.getElementById("tourModal").classList.remove("hidden");
+  renderTourStep();
+}
+
+function renderTourStep() {
+  const step = TOUR_STEPS[CURRENT_TOUR_STEP];
+  if (!step) return;
+  document.getElementById("tourStepBadge").textContent = step.badge;
+  document.getElementById("tourTitle").textContent = step.title;
+  document.getElementById("tourBody").innerHTML = step.body;
+  document.getElementById("tourMicrocopy").innerHTML = step.microcopy;
+
+  const pct = Math.round(((CURRENT_TOUR_STEP + 1) / TOUR_STEPS.length) * 100);
+  document.getElementById("tourProgressFill").style.width = pct + "%";
+
+  document.getElementById("tourPrevBtn").disabled = CURRENT_TOUR_STEP === 0;
+
+  const nextBtn = document.getElementById("tourNextBtn");
+  if (CURRENT_TOUR_STEP === TOUR_STEPS.length - 1) {
+    nextBtn.textContent = "Complete Tour 🎉";
+    nextBtn.className = "green";
+  } else {
+    nextBtn.textContent = "Next →";
+    nextBtn.className = "green";
+  }
+
+  const chkBox = document.getElementById("tourChecklistContainer");
+  const chkItems = document.getElementById("tourChecklistItems");
+  if (step.checklist && step.checklist.length) {
+    chkItems.innerHTML = step.checklist.map(c =>
+      `<div class="tour-checklist-item ${c.done ? "done" : ""}">
+        <span>${c.done ? "✓" : "○"}</span> <span>${esc(c.text)}</span>
+      </div>`
+    ).join("");
+    chkBox.classList.remove("hidden");
+  } else {
+    chkBox.classList.add("hidden");
+  }
+
+  updateSpotlight(step.target);
+}
+
+function updateSpotlight(targetSel) {
+  document.querySelectorAll(".tour-highlight").forEach(el => el.classList.remove("tour-highlight"));
+  const modal = document.getElementById("tourModal");
+  if (!modal) return;
+  modal.classList.remove("pos-center", "pos-bottom", "pos-top");
+
+  if (targetSel) {
+    const el = document.querySelector(targetSel);
+    if (el) {
+      el.classList.add("tour-highlight");
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      const rect = el.getBoundingClientRect();
+      if (rect.top < window.innerHeight * 0.5) {
+        modal.classList.add("pos-bottom");
+      } else {
+        modal.classList.add("pos-top");
+      }
+      return;
+    }
+  }
+  modal.classList.add("pos-center");
+}
+
+function nextTourStep() {
+  if (CURRENT_TOUR_STEP < TOUR_STEPS.length - 1) {
+    CURRENT_TOUR_STEP++;
+    renderTourStep();
+  } else {
+    endTour(true);
+  }
+}
+
+function prevTourStep() {
+  if (CURRENT_TOUR_STEP > 0) {
+    CURRENT_TOUR_STEP--;
+    renderTourStep();
+  }
+}
+
+function endTour(userDismissed = true) {
+  document.getElementById("tourBackdrop").classList.add("hidden");
+  document.getElementById("tourModal").classList.add("hidden");
+  updateSpotlight(null);
+  if (userDismissed) {
+    localStorage.setItem("loadguard_tour_done", "true");
+  }
+}
+
+run().then(() => {
+  setTimeout(() => startTour(false), 500);
+});
 </script>
+
+<!-- Interactive Onboarding Modal & Backdrop -->
+<div id="tourBackdrop" class="tour-backdrop hidden"></div>
+<div id="tourModal" class="tour-modal hidden">
+  <div class="tour-header">
+    <span class="tour-step-badge" id="tourStepBadge">Step 1 of 7</span>
+    <button class="ghost" style="padding:2px 8px;font-size:12px" onclick="endTour(true)">✕ Close</button>
+  </div>
+  <div class="tour-progress-bar"><div class="tour-progress-fill" id="tourProgressFill" style="width:14%"></div></div>
+  <h2 class="tour-title" id="tourTitle">Welcome to LoadGuard 🧠</h2>
+  <div class="tour-body" id="tourBody">
+    Every AI productivity tool floods you with notifications, context switches, and micro-decisions.
+    <b>LoadGuard is the co-worker whose job is to protect your finite attention budget.</b>
+  </div>
+  <div class="tour-microcopy" id="tourMicrocopy">💡 <b>Goal:</b> Sense cognitive load, explain drivers, and resequence your day with human approval.</div>
+  <div id="tourChecklistContainer" class="tour-checklist hidden">
+    <div class="tour-checklist-title">📋 Setup Tasks Checklist</div>
+    <div id="tourChecklistItems"></div>
+  </div>
+  <div class="tour-footer">
+    <button class="ghost" id="tourPrevBtn" onclick="prevTourStep()" disabled>← Back</button>
+    <div style="display:flex;gap:8px">
+      <button class="ghost" id="tourSkipBtn" onclick="endTour(true)">Skip Tour</button>
+      <button class="green" id="tourNextBtn" onclick="nextTourStep()">Next →</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>

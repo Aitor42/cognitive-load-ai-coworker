@@ -197,8 +197,11 @@ def _parse_ics_datetime(value: str, tzid: str | None = None) -> float:
         pass
     dt = datetime.strptime(value, "%Y%m%dT%H%M%S")
     if tzid:
+        clean_tzid = tzid.strip("\"'")
         try:
-            return dt.replace(tzinfo=ZoneInfo(_WINDOWS_TZ_MAP.get(tzid, tzid))).timestamp()
+            return dt.replace(
+                tzinfo=ZoneInfo(_WINDOWS_TZ_MAP.get(clean_tzid, clean_tzid))
+            ).timestamp()
         except (ZoneInfoNotFoundError, ValueError, OSError):
             pass
     return dt.replace(tzinfo=timezone.utc).timestamp()

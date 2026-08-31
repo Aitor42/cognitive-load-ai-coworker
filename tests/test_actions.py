@@ -243,6 +243,15 @@ class TestExportIcs(unittest.TestCase):
         )
         self.assertEqual(ics.count("BEGIN:VEVENT"), 4)
 
+    def test_export_ics_invalid_tz_fallback_to_utc(self):
+        plan = Plan(
+            load_report=LoadReport(score=80.0, level="overload"),
+            plan_id="x",
+            items=[PlanItem(position=1, action="focus_block", title="Focus block")],
+        )
+        ics = export_ics(plan, _tasks(), tzid="Invalid/Timezone_XYZ")
+        self.assertIn("BEGIN:VCALENDAR", ics)
+
     def test_day_end_epoch_timezone(self):
         """_day_end_epoch respects custom timezone string."""
         from loadguard.actions import _day_end_epoch

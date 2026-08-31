@@ -16,7 +16,6 @@ from __future__ import annotations
 import csv
 import io
 import json
-import math
 import time
 import uuid
 import warnings
@@ -192,14 +191,22 @@ def export_ics(
     before the block starts (pass ``None`` or ``0`` to export without alarms).
     """
     if start_epoch is None:
+        tz: Any = timezone.utc
+        tz_str = tz_name or tzid
+        if tz_str:
+            try:
+                tz = ZoneInfo(tz_str)
+            except (ZoneInfoNotFoundError, ValueError, OSError):
+                tz = timezone.utc
+        base_ts = time.time()
         if existing_events:
             stamps = [
                 e.timestamp for e in existing_events if getattr(e, "timestamp", None) is not None
             ]
             if stamps:
-                start_epoch = float(math.ceil(min(stamps) / 900.0) * 900)
-        if start_epoch is None:
-            start_epoch = float(math.ceil(time.time() / 900.0) * 900)
+                base_ts = min(stamps)
+        dt = datetime.fromtimestamp(base_ts, tz=tz)
+        start_epoch = datetime(dt.year, dt.month, dt.day, 9, 0, 0, tzinfo=tz).timestamp()
     if horizon_epoch is None:
         horizon_epoch = _day_end_epoch(start_epoch, tz_name=tz_name or tzid)
     cursor = start_epoch
@@ -271,7 +278,22 @@ def export_ics(
                 lines.append("END:VEVENT")
                 cursor += dur_seconds
         elif item.action in ("delegate", "batch"):
-            cursor += MINOR_STEP_MINUTES * 60.0
+            dur_seconds = MINOR_STEP_MINUTES * 60.0
+            if all_busy:
+                cursor = _find_next_free_slot(cursor, dur_seconds, all_busy)
+            lines += [
+                "BEGIN:VEVENT",
+                f"UID:loadguard-{plan.plan_id or 'plan'}-{item.position}@loadguard",
+                f"DTSTAMP:{dtstamp}",
+                f"DTSTART:{_ics_datetime(cursor)}",
+                f"DTEND:{_ics_datetime(cursor + dur_seconds)}",
+                _ics_fold(f"SUMMARY:{_ics_escape(item.title)}"),
+                "CATEGORIES:LOADGUARD-HANDOFF",
+            ]
+            if item.rationale:
+                lines.append(_ics_fold(f"DESCRIPTION:{_ics_escape(item.rationale)}"))
+            lines.append("END:VEVENT")
+            cursor += dur_seconds
         else:
             warnings.warn(
                 f"unknown plan action {item.action!r}; skipped in calendar export",

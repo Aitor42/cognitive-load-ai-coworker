@@ -18,6 +18,7 @@ import threading
 import time
 import uuid
 from dataclasses import asdict
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -184,6 +185,10 @@ class HistoryRequest(BaseModel):
 class IngestRequest(BaseModel):
     text: str
     format: Optional[str] = None  # "ics" | "jsonl"; auto-detected when omitted
+    # ISO-8601 date string (YYYY-MM-DD) to filter ICS events to a single day.
+    # When omitted LoadGuard defaults to the current local date (today).
+    # Pass an explicit date to analyse a different day from the same calendar.
+    date: Optional[str] = None
 
 
 class PilotRequest(BaseModel):
@@ -376,9 +381,37 @@ def _tasks_from_events(events: list[Any]) -> list[dict[str, Any]]:
     return tasks
 
 
+def _filter_events_to_date(events: list[dict | Any], date_str: str) -> list[dict | Any]:
+    from datetime import date as _date
+
+    try:
+        target: _date = _date.fromisoformat(date_str)
+    except ValueError:
+        return events
+    result = []
+    for e in events:
+        ts = e.get("timestamp") if isinstance(e, dict) else getattr(e, "timestamp", None)
+        if ts is None:
+            continue
+        try:
+            dt_utc = datetime.fromtimestamp(float(ts), tz=timezone.utc).date()
+            dt_local = datetime.fromtimestamp(float(ts)).date()
+            if dt_utc == target or dt_local == target:
+                result.append(e)
+        except (OSError, OverflowError, ValueError):
+            continue
+    return result
+
+
 @app.post("/ingest", dependencies=[Depends(verify_api_key)])
 def ingest(req: IngestRequest) -> dict[str, Any]:
-    """Parse raw uploaded signals (.ics calendar or .jsonl event log) into events."""
+    """Parse raw uploaded signals (.ics calendar or .jsonl event log) into events.
+
+    For ICS files the response is automatically filtered to a single day so that
+    uploading a full Google Calendar export analyses only the requested date.
+    The *date* field selects the day (YYYY-MM-DD). When omitted it defaults to
+    the date of the events found in the file or today's date.
+    """
     text = req.text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="empty payload")
@@ -387,8 +420,24 @@ def ingest(req: IngestRequest) -> dict[str, Any]:
         fmt = "ics" if text.upper().startswith("BEGIN:VCALENDAR") else "jsonl"
     if fmt == "ics":
         events, _ = parse_calendar_text(text)
+        if req.date:
+            target_date = req.date
+        elif events:
+            target_date = datetime.fromtimestamp(events[0].timestamp, tz=timezone.utc).strftime(
+                "%Y-%m-%d"
+            )
+        else:
+            target_date = datetime.now().strftime("%Y-%m-%d")
+        all_events_dicts = [asdict(e) for e in events]
+        day_events = _filter_events_to_date(all_events_dicts, target_date)
         tasks = _tasks_from_events(events)
-        return {"format": "ics", "events": [asdict(e) for e in events], "tasks": tasks}
+        return {
+            "format": "ics",
+            "events": day_events,
+            "tasks": tasks,
+            "analyzed_date": target_date,
+            "total_events_in_file": len(events),
+        }
     parsed: list[Any] = []
     for line in text.splitlines():
         line = line.strip()

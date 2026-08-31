@@ -36,6 +36,15 @@ class TestBuildPlan(unittest.TestCase):
         delegated = [i for i in plan.items if i.action == "delegate"]
         self.assertEqual({i.task_id for i in delegated}, {"b", "c"})
 
+    def test_locked_task_is_never_delegated(self) -> None:
+        tasks = [
+            Task(id="a", title="Locked low task", priority=1, locked=True),
+            Task(id="b", title="Unlocked low task", priority=1, locked=False),
+        ]
+        plan = build_plan(tasks, _overload_report())
+        delegated = [i for i in plan.items if i.action == "delegate"]
+        self.assertEqual([i.task_id for i in delegated], ["b"])
+
     def test_low_load_delegates_nothing(self) -> None:
         report = score(FeatureSet(focus_ratio=0.9))
         tasks = [Task(id="a", title="Deep work", priority=5)]

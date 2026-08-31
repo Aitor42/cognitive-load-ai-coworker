@@ -48,6 +48,7 @@ MODEL_LABEL = {
 def _parse_args(argv: list[str]) -> dict:
     opts: dict = {
         "events": SAMPLE,
+        "tasks": None,
         "html": None,
         "accept": False,
         "history": None,
@@ -63,6 +64,9 @@ def _parse_args(argv: list[str]) -> dict:
         elif arg == "--accept":
             opts["accept"] = True
             i += 1
+        elif arg == "--tasks" and i + 1 < len(argv):
+            opts["tasks"] = Path(argv[i + 1])
+            i += 2
         elif arg == "--history" and i + 1 < len(argv):
             opts["history"] = Path(argv[i + 1])
             i += 2
@@ -233,14 +237,36 @@ Status: {html.escape(result.plan.status)}</div>
 </div></body></html>"""
 
 
+def _load_tasks(path: Path) -> list:
+    import json
+    from loadguard.models import Task
+
+    tasks: list[Task] = []
+    text = path.read_text(encoding="utf-8").strip()
+    if text.startswith("["):
+        data = json.loads(text)
+        for item in data:
+            tasks.append(Task(**item))
+    else:
+        for line in text.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            item = json.loads(line)
+            tasks.append(Task(**item))
+    return tasks
+
+
 def main() -> None:
     opts = _parse_args(sys.argv)
     events = load_events(opts["events"])
     history = load_history(opts["history"]) if opts["history"] else None
     approval = "accepted" if opts["accept"] else None
+    tasks = _load_tasks(opts["tasks"]) if opts.get("tasks") else sample_tasks()
+
     result = run_workflow(
         events,
-        sample_tasks(),
+        tasks,
         history=history,
         approval=approval,
         role=opts.get("role"),
@@ -254,9 +280,9 @@ def main() -> None:
         ics_path = out / f"loadguard-{result.plan.plan_id}.ics"
         csv_path = out / f"loadguard-{result.plan.plan_id}.csv"
         ics_path.write_text(
-            export_ics(result.plan, sample_tasks(), existing_events=events), encoding="utf-8"
+            export_ics(result.plan, tasks, existing_events=events), encoding="utf-8"
         )
-        csv_path.write_text(export_tasks_csv(result.plan, sample_tasks()), encoding="utf-8")
+        csv_path.write_text(export_tasks_csv(result.plan, tasks), encoding="utf-8")
         print(f"\n ✅ Plan accepted — protected calendar written to {ics_path}")
         print(f"    Resequenced task list written to {csv_path}")
     else:

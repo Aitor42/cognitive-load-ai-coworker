@@ -104,6 +104,7 @@ details.section[open] summary{margin-bottom:12px}
   <button class="ghost" onclick="middayReview()" id="middayBtn" disabled>Midday re-organization</button>
   <button class="ghost" onclick="saveToBaseline()" id="saveBaseline" disabled>Save today's score to baseline</button>
   <button class="ghost" onclick="loadHistory()">Show baseline history</button>
+  <button class="ghost hidden" id="backDemo" onclick="backToDemo()">↩ Back to demo</button>
 </div>
 <div id="historyBox" class="meta hidden" style="background:#111827;border:1px solid #1f2937;border-radius:8px;padding:12px;margin:12px 0"></div>
 <div class="meta" id="modelChips"></div>
@@ -121,6 +122,7 @@ const ABSENCE_LABEL={vacation:"on vacation",leave:"on leave"};
 const DRIVER_KEY={"context switches per hour":"context_switches_per_hour","meeting density":"meeting_ratio",
 "notification rate":"notification_rate","focus time":"focus_ratio","multitasking":"multitasking_index"};
 let PLAN_ID=null; let LAST_SCORE=null; let EVENTS=[]; let CURRENT_PLAN=[]; let WORKERS=[]; let TASKS=[];
+let UPLOADED_MODE=false;
 
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 function gauge(s){const c=s<50?"#34d399":s<75?"#fbbf24":"#f87171";
@@ -182,10 +184,11 @@ function modelChipsHtml(r){
   const pChip=r.plan.proposed_by&&r.plan.proposed_by!=="deterministic"?"granite":"det";
   const gChip=guard==="granite-guardian"?"ok":"det";
   const roleChip=r.role?`<span class="chip ok">Role: ${esc(r.role)}</span>`:"";
+  const srcChip=UPLOADED_MODE?`<span class="chip ok">📁 Your calendar</span>`:"";
   return `<span class="chip ${pChip}">Decision: ${esc(proposed)}</span>
     <span class="chip ${gChip}">Guardian: ${esc(guard)}</span>
     <span class="chip">Narrator: ${esc(narrator)}</span>
-    ${roleChip}
+    ${roleChip}${srcChip}
     <span class="chip ${esc(r.plan.status)}">Status: ${esc(r.plan.status)}</span>`;
 }
 
@@ -238,13 +241,21 @@ async function run(){
   const scenario=document.getElementById("scenario").value;
   const role=document.getElementById("role").value || undefined;
   try{
-    const s=await api("/sample");
-    const events=transformEvents(s.events,scenario);
-    EVENTS=events; WORKERS=s.workers||[]; TASKS=s.tasks||[];
-    const hist=await api("/history");
-    const r=await api("/analyze",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({events:events,tasks:TASKS,history:hist.history,workers:WORKERS,role:role})});
-    render(r);
+    if(UPLOADED_MODE){
+      // Re-analyze uploaded data (scenario selector is ignored in upload mode).
+      const hist=await api("/history");
+      const r=await api("/analyze",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({events:EVENTS,tasks:TASKS,history:hist.history,workers:WORKERS,role:role})});
+      render(r);
+    }else{
+      const s=await api("/sample");
+      const events=transformEvents(s.events,scenario);
+      EVENTS=events; WORKERS=s.workers||[]; TASKS=s.tasks||[];
+      const hist=await api("/history");
+      const r=await api("/analyze",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({events:events,tasks:TASKS,history:hist.history,workers:WORKERS,role:role})});
+      render(r);
+    }
   }catch(e){
     document.getElementById("err").textContent = e.message==="Failed to fetch"
       ? "⚠ Cannot reach the API — run: pip install -r requirements.txt && python app.py"
@@ -272,16 +283,12 @@ async function handleFileUpload(ev){
     }
     EVENTS=ing.events;
     // Use tasks derived from the uploaded calendar when available;
-    // only fall back to demo tasks when the ingest response has none.
-    if(ing.tasks&&ing.tasks.length){
-      TASKS=ing.tasks;
-    }else{
-      const s=await api("/sample");
-      TASKS=s.tasks||[];
-    }
+    // fall back to empty task list (not demo tasks) to avoid confusion.
+    TASKS=(ing.tasks&&ing.tasks.length)?ing.tasks:[];
     // Workers are not present in uploaded calendars; load from sample.
-    const s2=await api("/sample");
-    WORKERS=s2.workers||[];
+    const s=await api("/sample");
+    WORKERS=s.workers||[];
+    UPLOADED_MODE=true;
     const hist=await api("/history");
     const role=document.getElementById("role").value || undefined;
     const r=await api("/analyze",{method:"POST",headers:{"Content-Type":"application/json"},
@@ -297,11 +304,20 @@ async function handleFileUpload(ev){
   ev.target.value="";
 }
 
+function backToDemo(){
+  UPLOADED_MODE=false;
+  document.getElementById("backDemo").classList.add("hidden");
+  run();
+}
+
 function render(r){
   PLAN_ID=r.plan_id; LAST_SCORE=r.load_report.score; CURRENT_PLAN=r.plan.items;
   document.getElementById("saveBaseline").disabled=false;
   document.getElementById("middayBtn").disabled=false;
   document.getElementById("modelChips").innerHTML=modelChipsHtml(r);
+  // Show/hide the back-to-demo button depending on mode.
+  const backBtn=document.getElementById("backDemo");
+  if(backBtn){if(UPLOADED_MODE) backBtn.classList.remove("hidden"); else backBtn.classList.add("hidden");}
 
   const lr=r.load_report,imp=r.impact;
   const top=topDriver(lr);
@@ -395,7 +411,7 @@ function render(r){
     </div>
 
     <div class="card" style="margin-top:20px"><h2>Proposed plan</h2><ul>${itemRows}</ul>
-      <div class="actions">
+      <div class="actions" id="planActions">
         <button class="green" onclick="decide('accepted')" ${status!=="pending"?"disabled":""}>Accept plan</button>
         <button class="ghost" onclick="toggleEdit()" ${status!=="pending"?"disabled":""} id="editBtn">Edit plan</button>
         <button class="red" onclick="decide('rejected')" ${status!=="pending"?"disabled":""}>Reject</button>
@@ -483,7 +499,7 @@ async function saveEdit(){
   try{
     const r=await api("/approve",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({plan_id:PLAN_ID,decision:"edited",items:kept,feedback:"removed: "+removed.join(", ")})});
-    document.querySelectorAll(".actions button").forEach(b=>b.disabled=true);
+    document.querySelectorAll("#planActions button").forEach(b=>b.disabled=true);
     updateStatusLine(r.status);
     if(r.impact){
       const imp=r.impact;
@@ -501,7 +517,7 @@ async function decide(decision){
   try{
     const body={plan_id:PLAN_ID,decision};
     const r=await api("/approve",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-    document.querySelectorAll(".actions button").forEach(b=>b.disabled=true);
+    document.querySelectorAll("#planActions button").forEach(b=>b.disabled=true);
     updateStatusLine(r.status);
   }catch(e){document.getElementById("err").textContent="⚠ "+e.message;}
 }

@@ -138,10 +138,14 @@ Detailed design and scoring rationale: [`docs/architecture.md`](docs/architectur
 ## ✨ Main capabilities
 
 - Explainable Cognitive Load Score from 0–100 with named factors and interaction terms.
+- **Interactive 7-Step Onboarding Walkthrough**: Guided spotlight tour with dynamic progress tracking, pro-tips, and interactive checklist directly in the web UI.
+- **Task Manager & Calendar Auto-Derivation**: Interactive to-do manager with instant calendar-event-to-task conversion ("⚡ Use Calendar Event Titles as Tasks") and support for **Locked Tasks (`locked=True`)** to preserve non-negotiable commitments.
+- **Configurable Workday Hours & Schedule Anchor**: Customizable workday start (default `09:00`) and end limit (default `18:00`) across Web UI, REST API, CLI, and MCP.
+- **Smart Date Filtering for Calendars**: `POST /ingest` isolates multi-day calendar exports to the exact date requested (`date: "YYYY-MM-DD"`).
 - **Role profile sensitivity tuning** (developer, manager, researcher, support) with validated schemas and strict 422 error handling.
 - **Structured task delegation** proposing optimal teammate assignees (`suggested_assignees`, `delegate_to`) with interactive UI assignment chips.
 - **Timezone-aware planning** with dynamic late-day fatigue protection (post-16:00 workload adaptation).
-- **Collision-free `.ics` export** with multi-calendar interval merging and configurable `VALARM` notifications.
+- **Collision-free `.ics` export** with multi-calendar interval merging, `CATEGORIES:LOADGUARD-HANDOFF`, and configurable `VALARM` notifications.
 - **Enterprise Observability & AI Telemetry**: Correlation IDs (`X-Request-ID`), response timing (`X-Response-Time-Ms`), and structured inference telemetry (`telemetry` block reporting duration, LLM provider, and Granite Guardian safety checks).
 - **Deployment Security & Access Control**: Optional API key authorization (`LOADGUARD_API_KEY` / `X-API-Key`) and destructive operation guardrails (`LOADGUARD_ALLOW_DELETE=false`).
 - **Strict State Machine & Source Immutability**: Enforces valid lifecycle transitions (`pending` → `accepted`/`rejected`/`edited`) while preserving raw input data integrity.
@@ -150,7 +154,7 @@ Detailed design and scoring rationale: [`docs/architecture.md`](docs/architectur
 - Personal baseline, trend, confidence, local history, and audit trail.
 - Team absences and deadline-aware reassignment alerts.
 - Midday end-of-day projection and afternoon re-organization.
-- Self-contained HTML report, interactive web dashboard, LangGraph orchestration, and IBM Bob MCP tools.
+- Self-contained HTML report (`--html`), interactive web dashboard, LangGraph orchestration, and IBM Bob MCP tools.
 - Deterministic fallback with zero API keys required.
 
 ---
@@ -182,10 +186,12 @@ python demo/demo.py --accept --out outputs
 Other useful modes:
 
 ```bash
-python demo/demo.py --role developer          # role-specific sensitivity (developer / manager / researcher / support)
-python demo/demo.py --history history.jsonl   # compare vs personal baseline
-python demo/demo.py --html report.html        # generate self-contained HTML report
-python demo/benchmark.py --pilot demo/sample_events.jsonl  # 3-phase pilot evaluation
+python demo/demo.py --role developer                     # role-specific sensitivity (developer / manager / researcher / support)
+python demo/demo.py --workday-start 08:30 --workday-end 17:30 # custom workday hours anchor
+python demo/demo.py --tasks custom_tasks.jsonl          # load custom task list
+python demo/demo.py --history history.jsonl              # compare vs personal baseline
+python demo/demo.py --html report.html                   # generate self-contained HTML report
+python demo/benchmark.py --pilot demo/sample_events.jsonl # 3-phase pilot evaluation
 ```
 
 Or using the `Makefile` shortcuts:
@@ -258,12 +264,12 @@ Every API response includes standard correlation headers:
 | `GET` | `/` | Interactive dashboard |
 | `GET` | `/health` | Health check (always public) |
 | `GET` | `/sample` | Sample events, tasks, and workers |
-| `POST` | `/analyze` | Analyze events, evaluate guardrails, and create a pending plan |
-| `POST` | `/ingest` | Parse uploaded ICS or JSONL text |
+| `POST` | `/analyze` | Analyze events, evaluate guardrails, and create a pending plan (accepts `workday_start`, `workday_end`, `role`) |
+| `POST` | `/ingest` | Parse uploaded ICS or JSONL text (supports single-day isolation via `date: "YYYY-MM-DD"`) |
 | `POST` | `/midday` | Project the end of day and optionally re-plan |
 | `POST` | `/approve` | Accept, edit, or reject a plan (enforces state machine transitions) |
 | `POST` | `/feedback` | Record feedback about a plan |
-| `GET` | `/plan/{id}/export.ics` | Download RFC 5545 calendar export with VALARM reminders |
+| `GET` | `/plan/{id}/export.ics` | Download RFC 5545 calendar export with VALARM reminders (`?workday_start=08:30&workday_end=17:30`) |
 | `GET` | `/plan/{id}/export.csv` | Download task export |
 | `GET/POST/DELETE` | `/history` | Manage personal score history |
 | `GET/DELETE` | `/audit` | Read or delete local decision audit records |

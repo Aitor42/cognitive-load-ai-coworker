@@ -25,7 +25,7 @@ The server is intended for trusted local clients only. The MCP server itself doe
 | `propose_plan(events, tasks, history?)` | Granite proposal (gated) + guardian + baseline + trend + impact |
 | `review_midday_workload(events, tasks, elapsed_minutes?, ...)` | Midday re-score, end-of-day projection, and afternoon re-organization |
 | `approve_plan(events, tasks, decision, feedback?)` | record a human accept / reject / edit in the audit trail |
-| `export_plan_ics(events, tasks, start_epoch?)` | the protected focus/recovery blocks as `.ics` |
+| `export_plan_ics(events, tasks, start_epoch?, workday_start?, workday_end?, alarm_minutes?, tz_name?)` | the protected focus/recovery blocks as `.ics` |
 | `export_plan_csv(events, tasks)` | the resequenced task list as CSV |
 | `pilot_evaluation(events, tasks, outcome_events?)` | baseline / projected / observed measurement |
 

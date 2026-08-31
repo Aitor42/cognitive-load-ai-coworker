@@ -250,6 +250,7 @@ cp .env.example .env
 - An `Absence` stores only the window and its type (`vacation` or `leave`) — never personal/medical data.
 - **Structured Delegation**: `PlanItem` carries `suggested_assignees: list[str]` and `delegate_to: Optional[str]`.
 - Eligible low-priority tasks (`priority <= 2`) are delegated only to active teammates who are free of overlapping absences.
+- **Task Locking Constraint**: Tasks with `locked=True` (and optional `locked_start_time`) are treated as fixed commitments and are strictly excluded from delegation even under `OVERLOAD` conditions.
 - Reassignment suggestions and interactive assignment chips allow seamless human delegation.
 
 `scripts/capture_signals.py` extracts absences from real calendars (all-day events, `OOF` status).
@@ -259,6 +260,17 @@ cp .env.example .env
 `projection.py` projects the end-of-day load from partial-day observations:
 1. **Morning** — `run_workflow` produces the morning strategy and initial plan.
 2. **Midday** — `run_midday_review` tracks completed tasks, re-scores observed load, and re-plans for the afternoon if projected load is `high` or `overload`.
+
+## Workday Hours & Calendar Schedule Anchoring
+
+`actions.export_ics` translates the optimized plan into RFC 5545 `.ics` calendar events:
+- **Configurable Workday Window**: `workday_start` (default `09:00`) anchors the start of the daily schedule; `workday_end` (default `18:00`) prevents focus blocks and tasks from spilling past working hours.
+- **Collision Avoidance**: `_merge_busy_intervals` and `_find_next_free_slot` place focus blocks and rescheduled tasks exclusively in genuine free gaps between existing meetings.
+- **Category Tagging**: Tasks and delegation hand-offs are tagged with `CATEGORIES:LOADGUARD-TASK` and `CATEGORIES:LOADGUARD-HANDOFF`.
+
+## Calendar Ingestion & Date Filtering
+
+The `POST /ingest` endpoint accepts raw `.ics` or `.jsonl` signals. For calendar files containing multi-day or monthly exports, the `date` parameter (`YYYY-MM-DD`) isolates analysis to the targeted day, defaulting to the date of the first event in the file or today's date.
 
 ## Enterprise Observability & Telemetry
 

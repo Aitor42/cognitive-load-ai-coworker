@@ -469,7 +469,7 @@ Developed for the **IBM AI Builders Challenge 2026** (Wildcard Track: *The Futur
 | Member | University | Role & Contributions | Profile |
 |---|---|---|---|
 | **Aitor Rufián Muñoz** | Universidad de Castilla-La Mancha (UCLM) | **Lead Developer & Software Architect**<br>Full implementation of the multi-agent pipeline, deterministic scoring engine, FastAPI backend, concurrency hardening, test suite & CI/CD. | [![GitHub](https://img.shields.io/badge/GitHub-Aitor42-181717?logo=github)](https://github.com/Aitor42) |
-| **Zhu Qiyuan** | Universidad Carlos III de Madrid (UC3M) | **Product Ideation & Concept Lead**<br>Initial concept proposal, cognitive load reduction domain ideation, feature enhancement brainstorming & testing support. | [![GitHub](https://img.shields.io/badge/GitHub-Profile-181717?logo=github)](https://github.com/) |
+| **Zhu Qiyuan** | Universidad Carlos III de Madrid (UC3M) | **Product Ideation & Concept Lead**<br>Initial concept proposal, cognitive load reduction domain ideation, feature enhancement brainstorming & testing support. | [![GitHub](https://img.shields.io/badge/GitHub-Profile-181717?logo=github)](https://github.com/qiyuan-byte) |
 
 ## 📄 License
 

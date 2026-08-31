@@ -15,9 +15,9 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from loadguard.actions import load_audit, record_approval  # noqa: E402
+from loadguard.actions import clear_audit, load_audit, record_approval  # noqa: E402
 from loadguard.api import app  # noqa: E402
-from loadguard.baseline import append_score, load_history  # noqa: E402
+from loadguard.baseline import append_score, clear_history, load_history  # noqa: E402
 from loadguard.sample_data import sample_tasks  # noqa: E402
 from loadguard.signals import load_events  # noqa: E402
 from loadguard.workflow import run_workflow  # noqa: E402
@@ -174,6 +174,38 @@ class TestConcurrency(unittest.TestCase):
             results = [f.result() for f in concurrent.futures.as_completed(futures)]
 
         self.assertTrue(all(code == 200 for code in results))
+
+    def test_concurrent_interleaved_file_deletes_and_appends(self) -> None:
+        """Interleaved concurrent writes and deletions across audit and history files."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            audit_file = Path(tmpdir) / "test_audit.jsonl"
+            history_file = Path(tmpdir) / "test_history.jsonl"
+            num_threads = 12
+            num_ops = 48
+
+            def _audit_op(idx: int) -> None:
+                record_approval(
+                    f"pid_{idx}",
+                    "accepted" if idx % 2 == 0 else "rejected",
+                    feedback=f"fb {idx}",
+                    path=audit_file,
+                )
+                if idx % 12 == 0:
+                    clear_audit(audit_file)
+
+            def _history_op(idx: int) -> None:
+                append_score(history_file, 50.0 + (idx % 20))
+                if idx % 12 == 0:
+                    clear_history(history_file)
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as pool:
+                futures = [pool.submit(_audit_op, i) for i in range(num_ops)]
+                futures += [pool.submit(_history_op, i) for i in range(num_ops)]
+                for f in concurrent.futures.as_completed(futures):
+                    f.result()
+
+            self.assertIsInstance(load_audit(audit_file), list)
+            self.assertIsInstance(load_history(history_file), list)
 
 
 if __name__ == "__main__":

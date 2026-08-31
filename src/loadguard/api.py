@@ -231,6 +231,8 @@ def _to_tasks(payload: list[dict[str, Any]]) -> list[Task]:
             deadline=_to_epoch(t["deadline"]) if t.get("deadline") is not None else None,
             status=str(t.get("status", "todo")),
             assignee=str(t["assignee"]) if t.get("assignee") else None,
+            locked=_parse_bool(t.get("locked"), False),
+            locked_start_time=str(t["locked_start_time"]) if t.get("locked_start_time") else None,
         )
         for i, t in enumerate(payload)
     ]

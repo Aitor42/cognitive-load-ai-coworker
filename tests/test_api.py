@@ -677,6 +677,52 @@ class TestApi(unittest.TestCase):
         self.assertEqual(resp.json()["format"], "ics")
         self.assertEqual(len(resp.json()["events"]), 1)
 
+    def test_ingest_derives_tasks_from_calendar_events(self) -> None:
+        """Uploaded calendar meetings become tasks so the plan uses real activities."""
+        ics_text = (
+            "BEGIN:VCALENDAR\nVERSION:2.0\n"
+            # Long meeting (90 min) → priority 4
+            "BEGIN:VEVENT\nUID:1\nDTSTART:20260817T090000Z\nDTEND:20260817T103000Z\n"
+            "SUMMARY:Architecture Review\nEND:VEVENT\n"
+            # Short meeting (10 min) → priority 2
+            "BEGIN:VEVENT\nUID:2\nDTSTART:20260817T110000Z\nDTEND:20260817T111000Z\n"
+            "SUMMARY:Quick Sync\nEND:VEVENT\n"
+            # Normal meeting (30 min) → priority 3
+            "BEGIN:VEVENT\nUID:3\nDTSTART:20260817T140000Z\nDTEND:20260817T143000Z\n"
+            "SUMMARY:Sprint Planning\nEND:VEVENT\n"
+            "END:VCALENDAR\n"
+        )
+        resp = self.client.post("/ingest", json={"text": ics_text, "format": "ics"})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(len(data["events"]), 3)
+        self.assertEqual(len(data["tasks"]), 3)
+        # Long meeting → high priority
+        long_task = next(t for t in data["tasks"] if t["title"] == "Architecture Review")
+        self.assertEqual(long_task["priority"], 4)
+        self.assertAlmostEqual(long_task["duration_minutes"], 90.0, places=0)
+        # Short meeting → low priority
+        short_task = next(t for t in data["tasks"] if t["title"] == "Quick Sync")
+        self.assertEqual(short_task["priority"], 2)
+        self.assertAlmostEqual(short_task["duration_minutes"], 10.0, places=0)
+        # Normal meeting → medium priority
+        normal_task = next(t for t in data["tasks"] if t["title"] == "Sprint Planning")
+        self.assertEqual(normal_task["priority"], 3)
+
+    def test_ingest_jsonl_derives_tasks(self) -> None:
+        """JSONL ingest also derives tasks from meeting events."""
+        text = (
+            '{"timestamp": "2026-08-17T09:00:00Z", "kind": "meeting", "duration_minutes": 90, "meta": {"title": "Long"}}\n'
+            '{"timestamp": "2026-08-17T10:00:00Z", "kind": "notification", "meta": {"source": "slack"}}\n'
+        )
+        resp = self.client.post("/ingest", json={"text": text, "format": "jsonl"})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        # Only the meeting becomes a task; the notification does not.
+        self.assertEqual(len(data["tasks"]), 1)
+        self.assertEqual(data["tasks"][0]["title"], "Long")
+        self.assertEqual(data["tasks"][0]["priority"], 4)
+
     def test_plans_persist_to_disk(self) -> None:
         data = self._analyze()
         pid = data["plan_id"]

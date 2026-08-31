@@ -340,6 +340,42 @@ def pilot_custom(req: PilotRequest) -> dict[str, Any]:
     return asdict(result)
 
 
+def _tasks_from_events(events: list[Any]) -> list[dict[str, Any]]:
+    """Derive Task-like dicts from parsed calendar events.
+
+    Meetings become actionable tasks so the planner can reorganize the user's
+    real calendar instead of falling back to demo sample data.
+    """
+    tasks: list[dict[str, Any]] = []
+    for i, ev in enumerate(events):
+        ev_dict = asdict(ev) if hasattr(ev, "__dataclass_fields__") else ev
+        if ev_dict.get("kind") != "meeting":
+            continue
+        meta = ev_dict.get("meta") or {}
+        title = meta.get("title") or meta.get("source") or f"Meeting {i + 1}"
+        duration = ev_dict.get("duration_minutes", 30.0)
+        timestamp = ev_dict.get("timestamp")
+        # Meetings are generally medium priority (3). Short ones are lower
+        # priority, long ones (>60 min) higher.
+        priority = 3
+        if duration and duration > 60:
+            priority = 4
+        elif duration and duration <= 15:
+            priority = 2
+        tasks.append(
+            {
+                "id": f"cal-{i}",
+                "title": str(title),
+                "priority": priority,
+                "duration_minutes": float(duration) if duration else 30.0,
+                "focus_required": False,
+                "deadline": timestamp,
+                "status": "todo",
+            }
+        )
+    return tasks
+
+
 @app.post("/ingest", dependencies=[Depends(verify_api_key)])
 def ingest(req: IngestRequest) -> dict[str, Any]:
     """Parse raw uploaded signals (.ics calendar or .jsonl event log) into events."""
@@ -351,7 +387,8 @@ def ingest(req: IngestRequest) -> dict[str, Any]:
         fmt = "ics" if text.upper().startswith("BEGIN:VCALENDAR") else "jsonl"
     if fmt == "ics":
         events, _ = parse_calendar_text(text)
-        return {"format": "ics", "events": [asdict(e) for e in events]}
+        tasks = _tasks_from_events(events)
+        return {"format": "ics", "events": [asdict(e) for e in events], "tasks": tasks}
     parsed: list[Any] = []
     for line in text.splitlines():
         line = line.strip()
@@ -361,7 +398,8 @@ def ingest(req: IngestRequest) -> dict[str, Any]:
             parsed.append(parse_event(json.loads(line)))
         except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
             raise HTTPException(status_code=400, detail=f"invalid JSONL line: {exc}") from exc
-    return {"format": "jsonl", "events": [asdict(e) for e in parsed]}
+    tasks = _tasks_from_events(parsed)
+    return {"format": "jsonl", "events": [asdict(e) for e in parsed], "tasks": tasks}
 
 
 @app.post("/analyze", dependencies=[Depends(verify_api_key)])

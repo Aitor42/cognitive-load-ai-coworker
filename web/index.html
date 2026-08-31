@@ -270,8 +270,18 @@ async function handleFileUpload(ev){
       document.getElementById("err").textContent="⚠ No events found in that file.";
       return;
     }
-    const s=await api("/sample");
-    EVENTS=ing.events; WORKERS=s.workers||[]; TASKS=s.tasks||[];
+    EVENTS=ing.events;
+    // Use tasks derived from the uploaded calendar when available;
+    // only fall back to demo tasks when the ingest response has none.
+    if(ing.tasks&&ing.tasks.length){
+      TASKS=ing.tasks;
+    }else{
+      const s=await api("/sample");
+      TASKS=s.tasks||[];
+    }
+    // Workers are not present in uploaded calendars; load from sample.
+    const s2=await api("/sample");
+    WORKERS=s2.workers||[];
     const hist=await api("/history");
     const role=document.getElementById("role").value || undefined;
     const r=await api("/analyze",{method:"POST",headers:{"Content-Type":"application/json"},

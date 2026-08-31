@@ -23,6 +23,7 @@ The server is intended for trusted local clients only. The MCP server itself doe
 | `analyze_workload(events, tasks)` | features, load report, plan, and impact |
 | `benchmark_workload(events, tasks)` | objective before/after metrics |
 | `propose_plan(events, tasks, history?)` | Granite proposal (gated) + guardian + baseline + trend + impact |
+| `review_midday_workload(events, tasks, elapsed_minutes?, ...)` | Midday re-score, end-of-day projection, and afternoon re-organization |
 | `approve_plan(events, tasks, decision, feedback?)` | record a human accept / reject / edit in the audit trail |
 | `export_plan_ics(events, tasks, start_epoch?)` | the protected focus/recovery blocks as `.ics` |
 | `export_plan_csv(events, tasks)` | the resequenced task list as CSV |

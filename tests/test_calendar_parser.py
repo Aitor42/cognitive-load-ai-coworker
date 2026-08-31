@@ -268,6 +268,25 @@ class TestCalendarParser(unittest.TestCase):
         self.assertFalse(_is_absence({"SUMMARY": "Permiso de obras reunión"}))
         self.assertFalse(_is_absence({"SUMMARY": "vacationing with family meeting"}))
 
+    def test_unfold_with_tabs_and_spaces(self):
+        text = "SUMMARY:Team Sync \n\twith Architecture \n and Product"
+        self.assertEqual(_unfold(text), "SUMMARY:Team Sync with Architecture and Product")
+
+    def test_classify_vevents_unescapes_summary(self):
+        ics = (
+            "BEGIN:VCALENDAR\n"
+            "BEGIN:VEVENT\n"
+            "UID:esc1\n"
+            "DTSTART:20260817T090000Z\n"
+            "DTEND:20260817T100000Z\n"
+            "SUMMARY:Review\\, Architecture\\; Planning\\nSession\n"
+            "END:VEVENT\n"
+            "END:VCALENDAR\n"
+        )
+        events, _ = parse_calendar_text(ics)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].meta["title"], "Review, Architecture; Planning Session")
+
 
 if __name__ == "__main__":
     unittest.main()

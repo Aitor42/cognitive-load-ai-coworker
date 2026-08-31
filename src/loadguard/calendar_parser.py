@@ -238,7 +238,7 @@ def _unfold(text: str) -> str:
     lines = text.splitlines()
     unfolded: list[str] = []
     for line in lines:
-        if line.startswith(" ") and unfolded:
+        if (line.startswith(" ") or line.startswith("\t")) and unfolded:
             unfolded[-1] += line[1:]
         else:
             unfolded.append(line)
@@ -479,6 +479,13 @@ def _classify_vevents(
     absences: list[Absence] = []
     for props, tzids, all_day in vevents:
         try:
+            summary = (
+                props.get("SUMMARY", "")
+                .replace(r"\,", ",")
+                .replace(r"\;", ";")
+                .replace(r"\n", " ")
+                .strip()
+            )
             if _is_absence(props, all_day):
                 absences.extend(
                     Absence(start=start, end=end, kind=_absence_kind(props))
@@ -490,7 +497,7 @@ def _classify_vevents(
                         timestamp=start,
                         kind="meeting",
                         duration_minutes=max((end - start) / 60.0, 1.0),
-                        meta={"title": props.get("SUMMARY", "")},
+                        meta={"title": summary},
                     )
                     for start, end in _event_occurrences(props, tzids, all_day)
                 )
@@ -501,7 +508,7 @@ def _classify_vevents(
                         timestamp=start,
                         kind="meeting",
                         duration_minutes=480.0,
-                        meta={"title": props.get("SUMMARY", ""), "all_day": True},
+                        meta={"title": summary, "all_day": True},
                     )
                     for start, end in _event_occurrences(props, tzids, all_day)
                 )

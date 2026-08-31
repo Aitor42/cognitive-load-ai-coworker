@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from .models import MEETING, Event, Plan, Task
+from .models import Event, Plan, Task
 
 # Default durations (minutes) for the blocks LoadGuard schedules.
 BLOCK_DURATIONS = {"focus_block": 45.0, "break": 15.0}
@@ -244,11 +244,11 @@ def export_ics(
         start_epoch = datetime(
             dt.year, dt.month, dt.day, s_hour, s_minute, 0, tzinfo=tz
         ).timestamp()
+    dt_start = datetime.fromtimestamp(start_epoch, tz=tz)
 
     if horizon_epoch is None:
         if workday_end is not None:
             e_hour, e_minute = _parse_time_of_day(workday_end, default_hour=18, default_minute=0)
-            dt_start = datetime.fromtimestamp(start_epoch, tz=tz)
             candidate_end = datetime(
                 dt_start.year, dt_start.month, dt_start.day, e_hour, e_minute, 0, tzinfo=tz
             ).timestamp()
@@ -263,9 +263,12 @@ def export_ics(
 
     all_busy: list[tuple[float, float]] = list(busy_intervals or [])
     if existing_events:
-        for e in existing_events:
-            if e.kind in (MEETING, "meeting", "busy") and e.duration_minutes > 0:
-                all_busy.append((e.timestamp, e.timestamp + e.duration_minutes * 60.0))
+        for ev in existing_events:
+            ts = getattr(ev, "timestamp", None)
+            dur = getattr(ev, "duration_minutes", 0.0) or 0.0
+            if ts is not None and dur > 0:
+                all_busy.append((ts, ts + dur * 60.0))
+    all_busy.sort(key=lambda x: x[0])
     all_busy = _merge_busy_intervals(all_busy)
 
     task_durations = {t.id: max(0.0, float(t.duration_minutes or 30.0)) for t in tasks}
@@ -311,21 +314,32 @@ def export_ics(
             if item.task_id:
                 duration = task_durations.get(item.task_id, 30.0)
                 dur_seconds = duration * 60.0
-                if all_busy:
-                    cursor = _find_next_free_slot(cursor, dur_seconds, all_busy)
+                task_obj = next((t for t in tasks if t.id == item.task_id), None)
+                if task_obj and task_obj.locked and task_obj.locked_start_time:
+                    l_h, l_m = _parse_time_of_day(task_obj.locked_start_time)
+                    dt_task = datetime(
+                        dt_start.year, dt_start.month, dt_start.day, l_h, l_m, 0, tzinfo=tz
+                    )
+                    task_start = dt_task.timestamp()
+                else:
+                    if all_busy:
+                        cursor = _find_next_free_slot(cursor, dur_seconds, all_busy)
+                    task_start = cursor
+                if task_start >= horizon_epoch:
+                    continue
                 lines += [
                     "BEGIN:VEVENT",
                     f"UID:loadguard-{plan.plan_id or 'plan'}-{item.position}@loadguard",
                     f"DTSTAMP:{dtstamp}",
-                    f"DTSTART:{_ics_datetime(cursor)}",
-                    f"DTEND:{_ics_datetime(cursor + dur_seconds)}",
+                    f"DTSTART:{_ics_datetime(task_start)}",
+                    f"DTEND:{_ics_datetime(task_start + dur_seconds)}",
                     _ics_fold(f"SUMMARY:{_ics_escape(item.title)}"),
                     "CATEGORIES:LOADGUARD-TASK",
                 ]
                 if item.rationale:
                     lines.append(_ics_fold(f"DESCRIPTION:{_ics_escape(item.rationale)}"))
                 lines.append("END:VEVENT")
-                cursor += dur_seconds
+                cursor = max(cursor, task_start + dur_seconds)
         elif item.action in ("delegate", "batch"):
             dur_seconds = MINOR_STEP_MINUTES * 60.0
             if all_busy:

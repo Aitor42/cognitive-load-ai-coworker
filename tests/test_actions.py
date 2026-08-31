@@ -321,6 +321,49 @@ class TestExportIcs(unittest.TestCase):
         )
         self.assertIn("Focus block", ics)
 
+    def test_export_ics_with_locked_task(self):
+        plan = Plan(
+            load_report=LoadReport(score=80.0, level="overload"),
+            plan_id="x",
+            items=[PlanItem(position=1, action="do", task_id="t_locked", title="Fixed Meeting")],
+        )
+        tasks = [
+            Task(
+                id="t_locked",
+                title="Fixed Meeting",
+                priority=3,
+                duration_minutes=30.0,
+                locked=True,
+                locked_start_time="14:15",
+            )
+        ]
+        events = [Event(timestamp=1_700_000_000.0, kind="meeting", duration_minutes=30.0)]
+        ics = export_ics(plan, tasks, existing_events=events)
+        self.assertIn("DTSTART:20231114T141500Z", ics)
+
+    def test_export_ics_with_locked_task_past_horizon_is_skipped(self):
+        plan = Plan(
+            load_report=LoadReport(score=80.0, level="overload"),
+            plan_id="x",
+            items=[
+                PlanItem(position=1, action="do", task_id="t_locked", title="Late Fixed Meeting")
+            ],
+        )
+        tasks = [
+            Task(
+                id="t_locked",
+                title="Late Fixed Meeting",
+                priority=3,
+                duration_minutes=30.0,
+                locked=True,
+                locked_start_time="19:30",
+            )
+        ]
+        events = [Event(timestamp=1_700_000_000.0, kind="meeting", duration_minutes=30.0)]
+        # Workday ends at 18:00, so task at 19:30 is skipped
+        ics = export_ics(plan, tasks, existing_events=events, workday_end="18:00")
+        self.assertNotIn("Late Fixed Meeting", ics)
+
     def test_day_end_epoch_timezone(self):
         """_day_end_epoch respects custom timezone string."""
         from loadguard.actions import _day_end_epoch

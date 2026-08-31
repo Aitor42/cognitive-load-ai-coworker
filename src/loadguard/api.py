@@ -438,7 +438,7 @@ def ingest(req: IngestRequest) -> dict[str, Any]:
             target_date = datetime.now().strftime("%Y-%m-%d")
         all_events_dicts = [asdict(e) for e in events]
         day_events = _filter_events_to_date(all_events_dicts, target_date)
-        tasks = _tasks_from_events(events)
+        tasks = _tasks_from_events(day_events)
         return {
             "format": "ics",
             "events": day_events,

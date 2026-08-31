@@ -399,8 +399,10 @@ async function handleFileUpload(ev){
     }
     const hist=await api("/history");
     const role=document.getElementById("role").value||undefined;
+    const ws=document.getElementById("workdayStart")?.value||undefined;
+    const we=document.getElementById("workdayEnd")?.value||undefined;
     const r=await api("/analyze",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({events:EVENTS,tasks:TASKS,history:hist.history,workers:WORKERS,role:role,window_minutes:480})});
+      body:JSON.stringify({events:EVENTS,tasks:TASKS,history:hist.history,workers:WORKERS,role:role,workday_start:ws,workday_end:we,window_minutes:480})});
     render(r);
     renderTaskManager();
   }catch(e){
@@ -444,8 +446,10 @@ async function reanalyzeIcs(){
     document.getElementById("err").textContent="";
     const hist=await api("/history");
     const role=document.getElementById("role").value||undefined;
+    const ws=document.getElementById("workdayStart")?.value||undefined;
+    const we=document.getElementById("workdayEnd")?.value||undefined;
     const r=await api("/analyze",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({events:EVENTS,tasks:TASKS,history:hist.history,workers:WORKERS,role:role,window_minutes:480})});
+      body:JSON.stringify({events:EVENTS,tasks:TASKS,history:hist.history,workers:WORKERS,role:role,workday_start:ws,workday_end:we,window_minutes:480})});
     render(r);
     renderTaskManager();
   }catch(e){
@@ -566,8 +570,10 @@ function clearAllTasks(){
 async function reanalyze(){
   const hist=await api("/history");
   const role=document.getElementById("role").value || undefined;
+  const ws=document.getElementById("workdayStart")?.value || undefined;
+  const we=document.getElementById("workdayEnd")?.value || undefined;
   const r=await api("/analyze",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({events:EVENTS,tasks:TASKS,history:hist.history,workers:WORKERS,role:role})});
+    body:JSON.stringify({events:EVENTS,tasks:TASKS,history:hist.history,workers:WORKERS,role:role,workday_start:ws,workday_end:we})});
   render(r);
 }
 

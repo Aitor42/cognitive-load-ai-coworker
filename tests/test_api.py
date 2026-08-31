@@ -852,6 +852,8 @@ class TestApi(unittest.TestCase):
         data = resp.json()
         self.assertEqual(len(data["events"]), 1)
         self.assertEqual(data["events"][0]["meta"]["title"], "Day2")
+        self.assertEqual(len(data["tasks"]), 1)
+        self.assertEqual(data["tasks"][0]["title"], "Day2")
         self.assertEqual(data["total_events_in_file"], 3)
 
     def test_filter_events_to_date_invalid_date_returns_all(self) -> None:

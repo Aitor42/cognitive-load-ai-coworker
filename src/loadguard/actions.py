@@ -162,6 +162,36 @@ def _find_next_free_slot(
     return cursor
 
 
+def _parse_time_of_day(
+    val: Any,
+    default_hour: int = 9,
+    default_minute: int = 0,
+) -> tuple[int, int]:
+    """Parse HH:MM string, decimal hour, or return (default_hour, default_minute)."""
+    if val is None:
+        return default_hour, default_minute
+    if isinstance(val, (int, float)):
+        hour = int(val)
+        minute = int(round((val - hour) * 60))
+        return max(0, min(23, hour)), max(0, min(59, minute))
+    if isinstance(val, str):
+        s = val.strip()
+        if not s:
+            return default_hour, default_minute
+        parts = s.split(":")
+        try:
+            h = int(parts[0])
+            m = int(parts[1]) if len(parts) > 1 else 0
+            return max(0, min(23, h)), max(0, min(59, m))
+        except ValueError:
+            try:
+                flt = float(s)
+                return _parse_time_of_day(flt, default_hour, default_minute)
+            except ValueError:
+                return default_hour, default_minute
+    return default_hour, default_minute
+
+
 def export_ics(
     plan: Plan,
     tasks: list[Task],
@@ -172,6 +202,8 @@ def export_ics(
     alarm_minutes: float | None = FOCUS_ALARM_MINUTES,
     tzid: str | None = None,
     tz_name: str | None = None,
+    workday_start: str | float | int | None = None,
+    workday_end: str | float | int | None = None,
 ) -> str:
     """Render the plan's focus/recovery blocks as an iCalendar (.ics) string.
 
@@ -184,20 +216,22 @@ def export_ics(
     in genuine free gaps.
 
     Blocks that would start at or after *horizon_epoch* (by default the end of
-    the day containing *start_epoch* in *tz_name*) are not exported, so a plan
-    cannot spill its protected blocks into the middle of the night.
+    the workday or day containing *start_epoch* in *tz_name*) are not exported.
 
-    Focus blocks carry a ``VALARM`` display reminder that fires *alarm_minutes*
-    before the block starts (pass ``None`` or ``0`` to export without alarms).
+    Parameters:
+    - *workday_start*: Start time of the workday (e.g. "09:00", "08:30" or 9.0).
+    - *workday_end*: End time of the workday (e.g. "18:00", "17:30" or 18.0).
+    - *alarm_minutes*: Lead time of the VALARM reminder (None or 0 for no alarm).
     """
+    tz: Any = timezone.utc
+    tz_str = tz_name or tzid
+    if tz_str:
+        try:
+            tz = ZoneInfo(tz_str)
+        except (ZoneInfoNotFoundError, ValueError, OSError):
+            tz = timezone.utc
+
     if start_epoch is None:
-        tz: Any = timezone.utc
-        tz_str = tz_name or tzid
-        if tz_str:
-            try:
-                tz = ZoneInfo(tz_str)
-            except (ZoneInfoNotFoundError, ValueError, OSError):
-                tz = timezone.utc
         base_ts = time.time()
         if existing_events:
             stamps = [
@@ -206,9 +240,24 @@ def export_ics(
             if stamps:
                 base_ts = min(stamps)
         dt = datetime.fromtimestamp(base_ts, tz=tz)
-        start_epoch = datetime(dt.year, dt.month, dt.day, 9, 0, 0, tzinfo=tz).timestamp()
+        s_hour, s_minute = _parse_time_of_day(workday_start, default_hour=9, default_minute=0)
+        start_epoch = datetime(
+            dt.year, dt.month, dt.day, s_hour, s_minute, 0, tzinfo=tz
+        ).timestamp()
+
     if horizon_epoch is None:
-        horizon_epoch = _day_end_epoch(start_epoch, tz_name=tz_name or tzid)
+        if workday_end is not None:
+            e_hour, e_minute = _parse_time_of_day(workday_end, default_hour=18, default_minute=0)
+            dt_start = datetime.fromtimestamp(start_epoch, tz=tz)
+            candidate_end = datetime(
+                dt_start.year, dt_start.month, dt_start.day, e_hour, e_minute, 0, tzinfo=tz
+            ).timestamp()
+            if candidate_end > start_epoch:
+                horizon_epoch = candidate_end
+            else:
+                horizon_epoch = _day_end_epoch(start_epoch, tz_name=tz_name or tzid)
+        else:
+            horizon_epoch = _day_end_epoch(start_epoch, tz_name=tz_name or tzid)
     cursor = start_epoch
     dtstamp = _ics_datetime(time.time())
 

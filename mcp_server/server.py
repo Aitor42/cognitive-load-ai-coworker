@@ -181,12 +181,16 @@ def export_plan_ics(
     start_epoch: float | None = None,
     alarm_minutes: float | None = None,
     tz_name: str | None = None,
+    workday_start: str | None = None,
+    workday_end: str | None = None,
 ) -> dict:
     """Render the approved plan's focus/recovery blocks as an .ics calendar.
 
     *alarm_minutes* sets the VALARM lead time for focus blocks: omitted uses
     the FOCUS_ALARM_MINUTES default and 0 exports without reminders.
     *tz_name* sets the timezone for calculating the day-end horizon.
+    *workday_start* sets the workday start time anchor (e.g. "09:00").
+    *workday_end* sets the workday end time limit (e.g. "18:00").
     """
     try:
         parsed_events = _to_events(events)
@@ -202,6 +206,8 @@ def export_plan_ics(
                 existing_events=parsed_events,
                 alarm_minutes=alarm,
                 tz_name=tz_name,
+                workday_start=workday_start,
+                workday_end=workday_end,
             )
         }
     except Exception as exc:

@@ -54,6 +54,8 @@ def _parse_args(argv: list[str]) -> dict:
         "history": None,
         "out": Path("."),
         "role": None,
+        "workday_start": None,
+        "workday_end": None,
     }
     i = 1
     while i < len(argv):
@@ -75,6 +77,12 @@ def _parse_args(argv: list[str]) -> dict:
             i += 2
         elif arg == "--role" and i + 1 < len(argv):
             opts["role"] = argv[i + 1]
+            i += 2
+        elif arg == "--workday-start" and i + 1 < len(argv):
+            opts["workday_start"] = argv[i + 1]
+            i += 2
+        elif arg == "--workday-end" and i + 1 < len(argv):
+            opts["workday_end"] = argv[i + 1]
             i += 2
         else:
             opts["events"] = Path(arg)
@@ -280,7 +288,14 @@ def main() -> None:
         ics_path = out / f"loadguard-{result.plan.plan_id}.ics"
         csv_path = out / f"loadguard-{result.plan.plan_id}.csv"
         ics_path.write_text(
-            export_ics(result.plan, tasks, existing_events=events), encoding="utf-8"
+            export_ics(
+                result.plan,
+                tasks,
+                existing_events=events,
+                workday_start=opts.get("workday_start"),
+                workday_end=opts.get("workday_end"),
+            ),
+            encoding="utf-8",
         )
         csv_path.write_text(export_tasks_csv(result.plan, tasks), encoding="utf-8")
         print(f"\n ✅ Plan accepted — protected calendar written to {ics_path}")

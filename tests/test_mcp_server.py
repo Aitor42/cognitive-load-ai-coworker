@@ -97,7 +97,14 @@ class TestMCPServer(unittest.TestCase):
         self.assertIn("audit", res)
 
     def test_export_plan_ics(self) -> None:
-        res = export_plan_ics(self.events, self.tasks, alarm_minutes=10.0, tz_name="UTC")
+        res = export_plan_ics(
+            self.events,
+            self.tasks,
+            alarm_minutes=10.0,
+            tz_name="UTC",
+            workday_start="08:30",
+            workday_end="17:30",
+        )
         self.assertIn("ics", res)
         self.assertIn("BEGIN:VCALENDAR", res["ics"])
 

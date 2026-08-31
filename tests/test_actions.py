@@ -252,6 +252,75 @@ class TestExportIcs(unittest.TestCase):
         ics = export_ics(plan, _tasks(), tzid="Invalid/Timezone_XYZ")
         self.assertIn("BEGIN:VCALENDAR", ics)
 
+    def test_parse_time_of_day(self):
+        from loadguard.actions import _parse_time_of_day
+
+        self.assertEqual(_parse_time_of_day(None), (9, 0))
+        self.assertEqual(_parse_time_of_day("08:30"), (8, 30))
+        self.assertEqual(_parse_time_of_day("17:45"), (17, 45))
+        self.assertEqual(_parse_time_of_day("10"), (10, 0))
+        self.assertEqual(_parse_time_of_day("8.5"), (8, 30))
+        self.assertEqual(_parse_time_of_day(8.5), (8, 30))
+        self.assertEqual(_parse_time_of_day(9), (9, 0))
+        self.assertEqual(_parse_time_of_day(""), (9, 0))
+        self.assertEqual(_parse_time_of_day("not-a-time"), (9, 0))
+        self.assertEqual(_parse_time_of_day("26:99"), (23, 59))
+        self.assertEqual(_parse_time_of_day(-5), (0, 0))
+        self.assertEqual(_parse_time_of_day([123]), (9, 0))
+
+    def test_export_ics_with_custom_workday_start(self):
+        plan = Plan(
+            load_report=LoadReport(score=80.0, level="overload"),
+            plan_id="x",
+            items=[PlanItem(position=1, action="focus_block", title="Focus block")],
+        )
+        events = [Event(timestamp=1_700_000_000.0, kind="meeting", duration_minutes=30.0)]
+        ics = export_ics(
+            plan,
+            _tasks(),
+            existing_events=events,
+            workday_start="08:30",
+        )
+        self.assertIn("DTSTART:20231114T083000Z", ics)
+
+    def test_export_ics_with_custom_workday_end(self):
+        plan = Plan(
+            load_report=LoadReport(score=80.0, level="overload"),
+            plan_id="x",
+            items=[
+                PlanItem(position=1, action="focus_block", title="Early Block"),
+                PlanItem(position=2, action="focus_block", title="Late Block"),
+            ],
+        )
+        events = [Event(timestamp=1_700_000_000.0, kind="meeting", duration_minutes=30.0)]
+        # Workday 08:00 to 08:45: only first 45 min block fits, second block is at 08:45 -> excluded
+        ics = export_ics(
+            plan,
+            _tasks(),
+            existing_events=events,
+            workday_start="08:00",
+            workday_end="08:45",
+        )
+        self.assertIn("Early Block", ics)
+        self.assertNotIn("Late Block", ics)
+
+    def test_export_ics_with_invalid_workday_end_before_start_falls_back(self):
+        plan = Plan(
+            load_report=LoadReport(score=80.0, level="overload"),
+            plan_id="x",
+            items=[PlanItem(position=1, action="focus_block", title="Focus block")],
+        )
+        events = [Event(timestamp=1_700_000_000.0, kind="meeting", duration_minutes=30.0)]
+        # End time before start time -> falls back to day end
+        ics = export_ics(
+            plan,
+            _tasks(),
+            existing_events=events,
+            workday_start="10:00",
+            workday_end="08:00",
+        )
+        self.assertIn("Focus block", ics)
+
     def test_day_end_epoch_timezone(self):
         """_day_end_epoch respects custom timezone string."""
         from loadguard.actions import _day_end_epoch

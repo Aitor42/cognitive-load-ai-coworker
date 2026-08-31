@@ -133,6 +133,8 @@ class AnalyzeRequest(BaseModel):
     tz_name: Optional[str] = None
     role: Optional[str] = None
     weights: Optional[dict[str, float]] = None
+    workday_start: Optional[str] = None
+    workday_end: Optional[str] = None
 
     @field_validator("role")
     @classmethod
@@ -154,6 +156,8 @@ class MiddayRequest(BaseModel):
     tz_name: Optional[str] = None
     role: Optional[str] = None
     weights: Optional[dict[str, float]] = None
+    workday_start: Optional[str] = None
+    workday_end: Optional[str] = None
 
     @field_validator("role")
     @classmethod
@@ -263,6 +267,8 @@ def _store_plan(
     workers: list[Worker] | None = None,
     alarm_minutes: float | None = None,
     tz_name: str | None = None,
+    workday_start: str | None = None,
+    workday_end: str | None = None,
 ) -> dict[str, Any]:
     """Persist a workflow result for later approval and export.
 
@@ -279,6 +285,8 @@ def _store_plan(
             "workers": [asdict(w) for w in workers] if workers else [],
             "alarm_minutes": FOCUS_ALARM_MINUTES if alarm_minutes is None else alarm_minutes,
             "tz_name": tz_name,
+            "workday_start": workday_start,
+            "workday_end": workday_end,
         }
         _trim_plans()
         _persist_plans()
@@ -478,6 +486,8 @@ def analyze(req: AnalyzeRequest, request: Request) -> dict[str, Any]:
         workers,
         alarm_minutes=req.alarm_minutes,
         tz_name=req.tz_name,
+        workday_start=req.workday_start,
+        workday_end=req.workday_end,
     )
     payload["role"] = req.role or "default"
     payload["weights_profile"] = req.role if req.role in ROLE_PROFILES else "default"
@@ -541,6 +551,8 @@ def midday(req: MiddayRequest, request: Request) -> dict[str, Any]:
                 "workers": [asdict(w) for w in workers],
                 "alarm_minutes": alarm,
                 "tz_name": req.tz_name,
+                "workday_start": req.workday_start,
+                "workday_end": req.workday_end,
             }
             _trim_plans()
             _persist_plans()
@@ -652,7 +664,14 @@ def feedback(req: FeedbackRequest) -> dict[str, Any]:
 
 
 @app.get("/plan/{plan_id}/export.ics", dependencies=[Depends(verify_api_key)])
-def export_plan_ics(plan_id: str, tzid: Optional[str] = None) -> Response:
+def export_plan_ics(
+    plan_id: str,
+    tzid: Optional[str] = None,
+    workday_start: Optional[str] = None,
+    workday_end: Optional[str] = None,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+) -> Response:
     with _PLANS_LOCK:
         stored = PLANS.get(plan_id)
         if stored is None:
@@ -662,6 +681,8 @@ def export_plan_ics(plan_id: str, tzid: Optional[str] = None) -> Response:
         existing_events = [parse_event(e) for e in stored.get("events", [])]
         alarm_minutes = stored["alarm_minutes"]
         tz_name = tzid or stored.get("tz_name")
+        w_start = workday_start or start_time or stored.get("workday_start")
+        w_end = workday_end or end_time or stored.get("workday_end")
     return Response(
         content=export_ics(
             plan,
@@ -670,6 +691,8 @@ def export_plan_ics(plan_id: str, tzid: Optional[str] = None) -> Response:
             alarm_minutes=alarm_minutes,
             tzid=tzid,
             tz_name=tz_name,
+            workday_start=w_start,
+            workday_end=w_end,
         ),
         media_type="text/calendar",
         headers={"Content-Disposition": f'attachment; filename="loadguard-{plan_id}.ics"'},

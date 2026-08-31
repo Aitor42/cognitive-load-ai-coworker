@@ -171,6 +171,53 @@ class TestApi(unittest.TestCase):
         ics = self.client.get(f"/plan/{pid}/export.ics?tzid=Europe/Madrid").text
         self.assertIn("X-WR-TIMEZONE:Europe/Madrid", ics)
 
+    def test_export_ics_with_workday_start_and_end_query_params(self) -> None:
+        events = [
+            {"timestamp": 1700000000.0, "kind": "meeting", "duration_minutes": 30.0, "meta": {}}
+        ]
+        tasks = [{"id": "t1", "title": "Morning Task", "priority": 5, "duration_minutes": 45.0}]
+        resp = self.client.post(
+            "/analyze",
+            json={
+                "events": events,
+                "tasks": tasks,
+                "workday_start": "08:30",
+                "workday_end": "17:00",
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        pid = resp.json()["plan_id"]
+        ics = self.client.get(f"/plan/{pid}/export.ics").text
+        self.assertIn("DTSTART:20231114T083000Z", ics)
+
+    def test_export_ics_with_start_time_and_end_time_query_params(self) -> None:
+        events = [
+            {"timestamp": 1700000000.0, "kind": "meeting", "duration_minutes": 30.0, "meta": {}}
+        ]
+        tasks = [{"id": "t1", "title": "Morning Task", "priority": 5, "duration_minutes": 45.0}]
+        resp = self.client.post("/analyze", json={"events": events, "tasks": tasks})
+        pid = resp.json()["plan_id"]
+        ics = self.client.get(f"/plan/{pid}/export.ics?start_time=07:30&end_time=16:30").text
+        self.assertIn("DTSTART:20231114T073000Z", ics)
+
+    def test_midday_with_workday_hours(self) -> None:
+        tasks = self.client.get("/sample").json()["tasks"]
+        resp = self.client.post(
+            "/midday",
+            json={
+                "events": self._busy_day_events(),
+                "tasks": tasks,
+                "elapsed_minutes": 480.0,
+                "total_minutes": 480.0,
+                "workday_start": "08:00",
+                "workday_end": "17:00",
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        pid = resp.json()["plan_id"]
+        ics = self.client.get(f"/plan/{pid}/export.ics").text
+        self.assertIn("BEGIN:VCALENDAR", ics)
+
     def test_export_csv(self) -> None:
         data = self._analyze()
         pid = data["plan_id"]

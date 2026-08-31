@@ -98,6 +98,42 @@ details.section[open] summary{margin-bottom:12px}
 .tour-progress-bar{height:3px;background:#1f2937;border-radius:2px;width:100%;margin-bottom:8px;overflow:hidden}
 .tour-progress-fill{height:100%;background:#2563eb;transition:width .3s ease}
 .tour-highlight{outline:3px solid #2563eb !important;outline-offset:4px;position:relative;z-index:9998 !important;box-shadow:0 0 0 9999px rgba(0,0,0,0.55),0 0 15px rgba(37,99,235,0.9) !important;border-radius:6px}
+
+/* Gestalt UI Enhancements: Law of Common Region, Similarity, Proximity & Continuity */
+.gestalt-toolbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px;padding:8px 12px;background:#0f172a;border:1px solid #1f2937;border-radius:8px}
+.gestalt-filters{display:flex;gap:6px;flex-wrap:wrap}
+.filter-btn{background:#1f2937;color:#9ca3af;border:1px solid #374151;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;transition:all .15s ease}
+.filter-btn:hover{background:#374151;color:#e5e7eb}
+.filter-btn.active{background:#2563eb;color:#fff;border-color:#3b82f6;font-weight:600}
+.phase-card{background:#111827;border:1px solid #1f2937;border-radius:10px;margin-bottom:14px;overflow:hidden;box-shadow:0 2px 5px rgba(0,0,0,0.2)}
+.phase-card-header{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#1a2234;border-bottom:1px solid #1f2937;cursor:pointer;user-select:none}
+.phase-card-header:hover{background:#222d44}
+.phase-title{font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px}
+.phase-meta{font-size:12px;color:#9ca3af;display:flex;align-items:center;gap:8px}
+.phase-toggle-icon{font-size:12px;color:#6b7280;transition:transform .2s ease}
+.phase-card.collapsed .phase-toggle-icon{transform:rotate(-90deg)}
+.phase-card.collapsed .phase-content{display:none}
+.phase-content{padding:6px 14px}
+.timeline-item{position:relative;padding:8px 0 8px 24px;display:flex;gap:10px;align-items:flex-start;border-bottom:1px solid rgba(31,41,55,0.6)}
+.timeline-item:last-child{border-bottom:0}
+.timeline-spine{position:absolute;left:8px;top:0;bottom:0;width:2px;background:#1f2937}
+.timeline-node{position:absolute;left:4px;top:14px;width:10px;height:10px;border-radius:50%;background:#374151;border:2px solid #111827;z-index:1}
+.timeline-node.focus_block{background:#3b82f6;box-shadow:0 0 6px rgba(59,130,246,0.8)}
+.timeline-node.do{background:#10b981;box-shadow:0 0 6px rgba(16,185,129,0.8)}
+.timeline-node.break{background:#f59e0b;box-shadow:0 0 6px rgba(245,158,11,0.8)}
+.timeline-node.delegate{background:#8b5cf6;box-shadow:0 0 6px rgba(139,92,246,0.8)}
+.timeline-node.batch{background:#06b6d4;box-shadow:0 0 6px rgba(6,182,212,0.8)}
+.plan-item-box{background:#1a2333;border:1px solid #273549;border-left:4px solid #374151;border-radius:8px;padding:8px 12px;flex:1;transition:transform .1s ease,border-color .15s ease}
+.plan-item-box:hover{transform:translateX(2px);border-color:#3b82f6}
+.plan-item-box.focus_block{border-left-color:#3b82f6;background:rgba(30,58,138,0.15)}
+.plan-item-box.do{border-left-color:#10b981;background:rgba(6,95,70,0.15)}
+.plan-item-box.break{border-left-color:#f59e0b;background:rgba(180,83,9,0.15)}
+.plan-item-box.delegate{border-left-color:#8b5cf6;background:rgba(124,58,237,0.15)}
+.plan-item-box.batch{border-left-color:#06b6d4;background:rgba(14,116,144,0.15)}
+.plan-item-box.locked-focal{border-color:#eab308;box-shadow:0 0 8px rgba(234,179,8,0.25)}
+.search-input{background:#1f2937;color:#e5e7eb;border:1px solid #374151;border-radius:6px;padding:4px 8px;font-size:12px}
+.task-group-card{background:#111827;border:1px solid #1f2937;border-radius:8px;padding:10px 14px;margin-bottom:10px}
+.task-group-title{font-size:13px;font-weight:700;color:#93c5fd;text-transform:uppercase;margin-bottom:6px;display:flex;justify-content:space-between}
 </style>
 </head>
 <body>
@@ -142,8 +178,25 @@ details.section[open] summary{margin-bottom:12px}
   <span class="meta" style="font-size:12px;color:#9ca3af">Sets workday start time & evening limit for exported schedule</span>
 </div>
 <div id="taskManagerBox" class="card hidden" style="margin:12px 0">
-  <h2>📝 Task List Manager</h2>
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+    <h2 style="margin:0">📝 Task List Manager</h2>
+    <div style="display:flex;gap:6px;align-items:center">
+      <input type="text" id="taskSearchInput" placeholder="🔍 Search tasks..." class="search-input" oninput="onTaskSearch(this.value)">
+    </div>
+  </div>
   <div class="meta" style="margin-bottom:10px">Calendar signals (.ics) control your Cognitive Load Score. LoadGuard resequences your tasks below according to your load level and deadlines.</div>
+  
+  <div class="gestalt-toolbar">
+    <div class="gestalt-filters" id="taskFilterButtons">
+      <button class="filter-btn active" id="taskBtnFilter_all" onclick="setTaskFilter('all')">All (<span id="taskCntAll">0</span>)</button>
+      <button class="filter-btn" id="taskBtnFilter_high" onclick="setTaskFilter('high')">🔥 High (P4-P5) (<span id="taskCntHigh">0</span>)</button>
+      <button class="filter-btn" id="taskBtnFilter_medium" onclick="setTaskFilter('medium')">⚡ Medium (P3) (<span id="taskCntMed">0</span>)</button>
+      <button class="filter-btn" id="taskBtnFilter_low" onclick="setTaskFilter('low')">🌱 Low (P1-P2) (<span id="taskCntLow">0</span>)</button>
+      <button class="filter-btn" id="taskBtnFilter_locked" onclick="setTaskFilter('locked')">🔒 Fixed Time (<span id="taskCntLocked">0</span>)</button>
+    </div>
+    <div class="meta" id="taskTimeSummary" style="margin:0;font-weight:600;color:#93c5fd"></div>
+  </div>
+
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
     <input type="text" id="newTaskTitle" placeholder="Task title (e.g. Finish Q3 Report)" style="flex:2;background:#1f2937;color:#e5e7eb;border:1px solid #374151;border-radius:6px;padding:6px 10px;font-size:13px">
     <select id="newTaskPriority" style="background:#1f2937;color:#e5e7eb;border:1px solid #374151;border-radius:6px;padding:6px;font-size:13px">
@@ -181,6 +234,50 @@ const DRIVER_KEY={"context switches per hour":"context_switches_per_hour","meeti
 "notification rate":"notification_rate","focus time":"focus_ratio","multitasking":"multitasking_index"};
 let PLAN_ID=null; let LAST_SCORE=null; let EVENTS=[]; let CURRENT_PLAN=[]; let WORKERS=[]; let TASKS=[];
 let ICS_TEXT=null; let ICS_FMT=null;  // retained so the user can re-analyse a different date
+let PLAN_FILTER="all"; let PLAN_SEARCH=""; let PLAN_VIEW_MODE="grouped";
+let PHASE_COLLAPSED={morning:false,afternoon:false,late:false};
+let TASK_FILTER="all"; let TASK_SEARCH="";
+
+function setPlanFilter(f){
+  PLAN_FILTER=f;
+  document.querySelectorAll("#planFilterButtons .filter-btn").forEach(btn=>btn.classList.remove("active"));
+  const btn=document.getElementById("btnFilter_"+f);
+  if(btn) btn.classList.add("active");
+  renderPlanItems();
+}
+
+function onPlanSearch(val){
+  PLAN_SEARCH=(val||"").trim().toLowerCase();
+  renderPlanItems();
+}
+
+function togglePlanViewMode(){
+  PLAN_VIEW_MODE=PLAN_VIEW_MODE==="grouped"?"flat":"grouped";
+  const btn=document.getElementById("planViewToggle");
+  if(btn) btn.textContent=PLAN_VIEW_MODE==="grouped"?"Switch to Flat View":"Switch to Timeline View";
+  renderPlanItems();
+}
+
+function togglePhaseCollapse(phaseKey){
+  PHASE_COLLAPSED[phaseKey]=!PHASE_COLLAPSED[phaseKey];
+  const el=document.getElementById("phaseCard_"+phaseKey);
+  if(el){
+    el.classList.toggle("collapsed", PHASE_COLLAPSED[phaseKey]);
+  }
+}
+
+function setTaskFilter(f){
+  TASK_FILTER=f;
+  document.querySelectorAll("#taskFilterButtons .filter-btn").forEach(btn=>btn.classList.remove("active"));
+  const btn=document.getElementById("taskBtnFilter_"+f);
+  if(btn) btn.classList.add("active");
+  renderTaskManager();
+}
+
+function onTaskSearch(val){
+  TASK_SEARCH=(val||"").trim().toLowerCase();
+  renderTaskManager();
+}
 
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 function gauge(s){const c=s<50?"#34d399":s<75?"#fbbf24":"#f87171";
@@ -506,24 +603,80 @@ function updateTaskLockTime(idx, timeStr){
 
 function renderTaskManager(){
   const el=document.getElementById("taskListContent");
+  if(!el) return;
   if(!TASKS||!TASKS.length){
     el.innerHTML='<div class="meta">No active tasks in your list. Click "+ Add Task" above or "Reset Sample Tasks".</div>';
+    const cAll=document.getElementById("taskCntAll"); if(cAll) cAll.textContent="0";
+    const cHi=document.getElementById("taskCntHigh"); if(cHi) cHi.textContent="0";
+    const cMed=document.getElementById("taskCntMed"); if(cMed) cMed.textContent="0";
+    const cLow=document.getElementById("taskCntLow"); if(cLow) cLow.textContent="0";
+    const cLk=document.getElementById("taskCntLocked"); if(cLk) cLk.textContent="0";
+    const sum=document.getElementById("taskTimeSummary"); if(sum) sum.textContent="";
     return;
   }
-  el.innerHTML=`<ul>${TASKS.map((t,idx)=>{
-    const lockBadge = t.locked
-      ? `<span class="chip" style="font-size:11px;color:#facc15;border-color:#eab308;padding:1px 6px">🔒 Fixed: <input type="time" value="${esc(t.locked_start_time||'10:00')}" style="background:transparent;color:#facc15;border:0;font-size:11px" onchange="updateTaskLockTime(${idx}, this.value)"></span>`
-      : "";
-    return `<li>
-      <span class="badge do">P${t.priority||3}</span>
-      <div class="itembody">
-        <b>${esc(t.title)}</b> <span class="meta">(${t.duration_minutes||30} min)</span>
-        ${lockBadge}
+
+  // Count totals
+  const cntHigh=TASKS.filter(t=>t.priority>=4).length;
+  const cntMed=TASKS.filter(t=>t.priority===3).length;
+  const cntLow=TASKS.filter(t=>t.priority<=2).length;
+  const cntLocked=TASKS.filter(t=>t.locked).length;
+  const totalMins=TASKS.reduce((acc,t)=>acc+(t.duration_minutes||30),0);
+
+  const cAll=document.getElementById("taskCntAll"); if(cAll) cAll.textContent=TASKS.length;
+  const cHi=document.getElementById("taskCntHigh"); if(cHi) cHi.textContent=cntHigh;
+  const cMed=document.getElementById("taskCntMed"); if(cMed) cMed.textContent=cntMed;
+  const cLow=document.getElementById("taskCntLow"); if(cLow) cLow.textContent=cntLow;
+  const cLk=document.getElementById("taskCntLocked"); if(cLk) cLk.textContent=cntLocked;
+  const sum=document.getElementById("taskTimeSummary"); if(sum) sum.textContent=`${TASKS.length} tasks · ${Math.floor(totalMins/60)}h ${totalMins%60}m total`;
+
+  // Filter tasks
+  let filtered = TASKS.map((t, origIdx) => ({ task: t, origIdx }));
+  if (TASK_FILTER === "high") filtered = filtered.filter(x => x.task.priority >= 4);
+  else if (TASK_FILTER === "medium") filtered = filtered.filter(x => x.task.priority === 3);
+  else if (TASK_FILTER === "low") filtered = filtered.filter(x => x.task.priority <= 2);
+  else if (TASK_FILTER === "locked") filtered = filtered.filter(x => x.task.locked);
+
+  if (TASK_SEARCH) {
+    filtered = filtered.filter(x => (x.task.title||"").toLowerCase().includes(TASK_SEARCH));
+  }
+
+  if (!filtered.length) {
+    el.innerHTML='<div class="meta" style="padding:10px 0">No tasks match your current filter/search.</div>';
+    return;
+  }
+
+  // Group by priority buckets: High (P4-P5), Medium (P3), Low (P1-P2)
+  const buckets = [
+    { key: "high", title: "🔥 High Priority & Urgent (P4–P5)", badge: "do", items: filtered.filter(x=>x.task.priority>=4) },
+    { key: "medium", title: "⚡ Standard / Core Tasks (P3)", badge: "batch", items: filtered.filter(x=>x.task.priority===3) },
+    { key: "low", title: "🌱 Low Priority / Candidate for Delegation (P1–P2)", badge: "delegate", items: filtered.filter(x=>x.task.priority<=2) }
+  ];
+
+  el.innerHTML = buckets.filter(b=>b.items.length>0).map(b => {
+    const bucketDur = b.items.reduce((acc,x)=>acc+(x.task.duration_minutes||30),0);
+    return `<div class="task-group-card">
+      <div class="task-group-title">
+        <span>${b.title}</span>
+        <span style="font-size:11px;font-weight:normal;color:#9ca3af">${b.items.length} task(s) · ${bucketDur} min</span>
       </div>
-      <button class="ghost" style="padding:2px 8px;font-size:11px" onclick="toggleTaskLock(${idx})">${t.locked ? '🔓 Unlock' : '🔒 Lock Time'}</button>
-      <button class="red" style="padding:2px 8px;font-size:11px" onclick="deleteTask(${idx})">✕ Delete</button>
-    </li>`;
-  }).join("")}</ul>`;
+      <ul>${b.items.map(item=>{
+        const t=item.task;
+        const idx=item.origIdx;
+        const lockBadge = t.locked
+          ? `<span class="chip" style="font-size:11px;color:#facc15;border-color:#eab308;padding:1px 6px">🔒 Fixed: <input type="time" value="${esc(t.locked_start_time||'10:00')}" style="background:transparent;color:#facc15;border:0;font-size:11px" onchange="updateTaskLockTime(${idx}, this.value)"></span>`
+          : "";
+        return `<li style="padding:6px 0;display:flex;align-items:center;gap:8px">
+          <span class="badge ${b.badge}">P${t.priority||3}</span>
+          <div class="itembody">
+            <b>${esc(t.title)}</b> <span class="meta">(${t.duration_minutes||30} min)</span>
+            ${lockBadge}
+          </div>
+          <button class="ghost" style="padding:2px 8px;font-size:11px" onclick="toggleTaskLock(${idx})">${t.locked ? '🔓 Unlock' : '🔒 Lock Time'}</button>
+          <button class="red" style="padding:2px 8px;font-size:11px" onclick="deleteTask(${idx})">✕ Delete</button>
+        </li>`;
+      }).join("")}</ul>
+    </div>`;
+  }).join("");
 }
 
 function addNewTask(){
@@ -744,41 +897,148 @@ function updateItemTime(idx) {
   }
 }
 
+function renderPlanItemHtml(item, idx, timeInfo) {
+  const assigneesHtml = (item.suggested_assignees && item.suggested_assignees.length)
+    ? `<div style="margin-top:4px"><span class="meta" style="font-size:11px">Suggested teammates:</span> ${item.suggested_assignees.map(a=>`<span class="chip" style="font-size:11px;padding:2px 6px;margin-right:4px">${esc(a)}</span>`).join("")}</div>`
+    : "";
+  const lockChip = timeInfo.isLocked
+    ? `<span class="chip" style="font-size:11px;color:#facc15;border-color:#eab308;padding:1px 6px">🔒 Fixed</span>`
+    : "";
+  const matchingTask = item.task_id ? TASKS.find(t=>t.id===item.task_id) : null;
+  const isHighPri = matchingTask && matchingTask.priority >= 5;
+  const focalClass = (timeInfo.isLocked || isHighPri) ? "locked-focal" : "";
+
+  return `<div class="timeline-item">
+    <div class="timeline-spine"></div>
+    <div class="timeline-node ${esc(item.action)}"></div>
+    <div class="plan-item-box ${esc(item.action)} ${focalClass}">
+      <div style="display:flex;align-items:flex-start;gap:8px">
+        <input type="checkbox" class="editcb hidden" data-idx="${idx}" checked style="margin-top:4px">
+        ${item.task_id?`<label title="Mark completed" style="cursor:pointer;margin-right:2px;margin-top:2px"><input type="checkbox" class="completedcb" data-task-id="${esc(item.task_id)}"> ✓</label>`:''}
+        <span class="badge ${esc(item.action)}">${esc(item.action)}</span>
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <b>${esc(item.title)}</b>
+            <span class="chip" style="font-size:11px;font-weight:600;color:#93c5fd;border-color:#2563eb;padding:1px 6px">🕒 ${timeInfo.startStr} – ${timeInfo.endStr} (${timeInfo.duration}m)</span>
+            ${lockChip}
+            <button class="ghost" style="padding:1px 6px;font-size:11px" onclick="toggleTimeEdit(${idx})">✏️ Edit</button>
+          </div>
+          <div id="timeEditBox_${idx}" class="hidden" style="margin-top:6px;display:inline-flex;align-items:center;gap:6px;background:#111827;padding:4px 8px;border-radius:6px;border:1px solid #374151">
+            <span style="font-size:11px;color:#9ca3af">Start:</span>
+            <input type="time" id="startTime_${idx}" value="${timeInfo.startStr}" style="background:#1f2937;color:#e5e7eb;border:1px solid #374151;border-radius:4px;padding:2px 4px;font-size:11px" onchange="updateItemTime(${idx})">
+            <span style="font-size:11px;color:#9ca3af">End:</span>
+            <input type="time" id="endTime_${idx}" value="${timeInfo.endStr}" style="background:#1f2937;color:#e5e7eb;border:1px solid #374151;border-radius:4px;padding:2px 4px;font-size:11px" onchange="updateItemTime(${idx})">
+          </div>
+          <div class="why">${esc(item.rationale)}</div>
+          ${assigneesHtml}
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
 function renderPlanItems() {
   if (!CURRENT_PLAN || !CURRENT_PLAN.length) return;
   const scheduleTimes = computeScheduleTimes(CURRENT_PLAN, TASKS, EVENTS);
   const container = document.getElementById("planItemsContainer");
   if (!container) return;
 
-  container.innerHTML = CURRENT_PLAN.map((i, idx) => {
-    const timeInfo = scheduleTimes[idx];
-    const assigneesHtml = (i.suggested_assignees && i.suggested_assignees.length)
-      ? `<div style="margin-top:4px"><span class="meta" style="font-size:11px">Suggested teammates:</span> ${i.suggested_assignees.map(a=>`<span class="chip" style="font-size:11px;padding:2px 6px;margin-right:4px">${esc(a)}</span>`).join("")}</div>`
-      : "";
-    const lockChip = timeInfo.isLocked
-      ? `<span class="chip" style="font-size:11px;color:#facc15;border-color:#eab308;padding:1px 6px">🔒 Fixed</span>`
-      : "";
-    return `<li>
-      <input type="checkbox" class="editcb hidden" data-idx="${idx}" checked>
-      ${i.task_id?`<label title="Mark completed" style="cursor:pointer;margin-right:6px"><input type="checkbox" class="completedcb" data-task-id="${esc(i.task_id)}"> ✓</label>`:''}
-      <span class="badge ${esc(i.action)}">${esc(i.action)}</span>
-      <div class="itembody">
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-          <b>${esc(i.title)}</b>
-          <span class="chip" style="font-size:11px;font-weight:600;color:#93c5fd;border-color:#2563eb;padding:1px 6px">🕒 ${timeInfo.startStr} – ${timeInfo.endStr}</span>
-          ${lockChip}
-          <button class="ghost" style="padding:1px 6px;font-size:11px" onclick="toggleTimeEdit(${idx})">✏️ Edit time</button>
-        </div>
-        <div id="timeEditBox_${idx}" class="hidden" style="margin-top:4px;display:inline-flex;align-items:center;gap:6px;background:#1f2937;padding:4px 8px;border-radius:6px;border:1px solid #374151">
-          <span style="font-size:11px;color:#9ca3af">Start:</span>
-          <input type="time" id="startTime_${idx}" value="${timeInfo.startStr}" style="background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:4px;padding:2px 4px;font-size:11px" onchange="updateItemTime(${idx})">
-          <span style="font-size:11px;color:#9ca3af">End:</span>
-          <input type="time" id="endTime_${idx}" value="${timeInfo.endStr}" style="background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:4px;padding:2px 4px;font-size:11px" onchange="updateItemTime(${idx})">
-        </div>
-        <div class="why">${esc(i.rationale)}</div>
-        ${assigneesHtml}
+  // Count categories
+  const cntFocus = CURRENT_PLAN.filter(i => i.action === "focus_block").length;
+  const cntDo = CURRENT_PLAN.filter(i => i.action === "do").length;
+  const cntDelegate = CURRENT_PLAN.filter(i => i.action === "delegate").length;
+  const cntBreak = CURRENT_PLAN.filter(i => i.action === "break").length;
+
+  const totalPlanMins = scheduleTimes.reduce((acc, t) => acc + (t.duration || 0), 0);
+  const focusMins = CURRENT_PLAN.reduce((acc, i, idx) => i.action === "focus_block" ? acc + (scheduleTimes[idx]?.duration || 0) : acc, 0);
+
+  const cAll = document.getElementById("cntAll"); if (cAll) cAll.textContent = CURRENT_PLAN.length;
+  const cFoc = document.getElementById("cntFocus"); if (cFoc) cFoc.textContent = cntFocus;
+  const cDo = document.getElementById("cntDo"); if (cDo) cDo.textContent = cntDo;
+  const cDel = document.getElementById("cntDelegate"); if (cDel) cDel.textContent = cntDelegate;
+  const cBrk = document.getElementById("cntBreak"); if (cBrk) cBrk.textContent = cntBreak;
+
+  const sumEl = document.getElementById("planTimeSummary");
+  if (sumEl) {
+    sumEl.textContent = `${CURRENT_PLAN.length} actions · ${Math.floor(totalPlanMins/60)}h ${totalPlanMins%60}m (${focusMins}m focus)`;
+  }
+
+  // Filter items
+  let filteredIndices = CURRENT_PLAN.map((item, idx) => ({ item, idx, timeInfo: scheduleTimes[idx] }));
+  if (PLAN_FILTER === "focus") filteredIndices = filteredIndices.filter(x => x.item.action === "focus_block");
+  else if (PLAN_FILTER === "do") filteredIndices = filteredIndices.filter(x => x.item.action === "do");
+  else if (PLAN_FILTER === "delegate") filteredIndices = filteredIndices.filter(x => x.item.action === "delegate");
+  else if (PLAN_FILTER === "break") filteredIndices = filteredIndices.filter(x => x.item.action === "break");
+
+  if (PLAN_SEARCH) {
+    filteredIndices = filteredIndices.filter(x => 
+      (x.item.title || "").toLowerCase().includes(PLAN_SEARCH) ||
+      (x.item.rationale || "").toLowerCase().includes(PLAN_SEARCH)
+    );
+  }
+
+  if (!filteredIndices.length) {
+    container.innerHTML = '<div class="meta" style="padding:16px 0;text-align:center">No scheduled actions match your current filter or search criteria.</div>';
+    return;
+  }
+
+  if (PLAN_VIEW_MODE === "flat") {
+    container.innerHTML = `<div class="phase-card">
+      <div class="phase-content" style="padding-top:10px;padding-bottom:10px">
+        ${filteredIndices.map(x => renderPlanItemHtml(x.item, x.idx, x.timeInfo)).join("")}
       </div>
-    </li>`;
+    </div>`;
+    return;
+  }
+
+  // Grouped by Day Phases (Gestalt Law of Common Region & Proximity)
+  const phases = [
+    {
+      key: "morning",
+      icon: "🌅",
+      title: "Morning Focus & Flow",
+      timeLabel: "Before 13:00",
+      items: filteredIndices.filter(x => x.timeInfo.startMin < 780)
+    },
+    {
+      key: "afternoon",
+      icon: "☀️",
+      title: "Midday & Afternoon Block",
+      timeLabel: "13:00 – 17:00",
+      items: filteredIndices.filter(x => x.timeInfo.startMin >= 780 && x.timeInfo.startMin < 1020)
+    },
+    {
+      key: "late",
+      icon: "🌙",
+      title: "Late-Day & Wrap-Up",
+      timeLabel: "Post 17:00",
+      items: filteredIndices.filter(x => x.timeInfo.startMin >= 1020)
+    }
+  ];
+
+  container.innerHTML = phases.filter(p => p.items.length > 0).map(p => {
+    const isCollapsed = PHASE_COLLAPSED[p.key];
+    const minStart = Math.min(...p.items.map(x => x.timeInfo.startMin));
+    const maxEnd = Math.max(...p.items.map(x => x.timeInfo.endMin));
+    const phaseDur = p.items.reduce((acc, x) => acc + x.timeInfo.duration, 0);
+    const focusInPhase = p.items.filter(x => x.item.action === "focus_block").length;
+    const focusMeta = focusInPhase > 0 ? ` · 🛡️ ${focusInPhase} focus` : "";
+
+    return `<div class="phase-card ${isCollapsed ? 'collapsed' : ''}" id="phaseCard_${p.key}">
+      <div class="phase-card-header" onclick="togglePhaseCollapse('${p.key}')">
+        <div class="phase-title">
+          <span>${p.icon} ${p.title}</span>
+          <span class="chip" style="font-size:11px;font-weight:normal;color:#93c5fd;border-color:#374151">${fmtMinToTime(minStart)} – ${fmtMinToTime(maxEnd)}</span>
+        </div>
+        <div class="phase-meta">
+          <span>${p.items.length} action(s) · ${phaseDur} min${focusMeta}</span>
+          <span class="phase-toggle-icon">▼</span>
+        </div>
+      </div>
+      <div class="phase-content">
+        ${p.items.map(x => renderPlanItemHtml(x.item, x.idx, x.timeInfo)).join("")}
+      </div>
+    </div>`;
   }).join("");
 }
 
@@ -840,7 +1100,25 @@ function renderPlanItems() {
       </div>
     </div>
 
-    <div class="card" style="margin-top:20px"><h2>Proposed plan</h2><ul id="planItemsContainer"></ul>
+    <div class="card" style="margin-top:20px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+        <h2 style="margin:0">📋 Proposed day plan</h2>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input type="text" id="planSearchInput" placeholder="🔍 Filter actions..." class="search-input" oninput="onPlanSearch(this.value)">
+          <button class="ghost" id="planViewToggle" style="padding:3px 8px;font-size:12px" onclick="togglePlanViewMode()">Switch to Flat View</button>
+        </div>
+      </div>
+      <div class="gestalt-toolbar">
+        <div class="gestalt-filters" id="planFilterButtons">
+          <button class="filter-btn active" id="btnFilter_all" onclick="setPlanFilter('all')">All (<span id="cntAll">0</span>)</button>
+          <button class="filter-btn" id="btnFilter_focus" onclick="setPlanFilter('focus')">🛡️ Deep Work (<span id="cntFocus">0</span>)</button>
+          <button class="filter-btn" id="btnFilter_do" onclick="setPlanFilter('do')">⚡ Tasks (<span id="cntDo">0</span>)</button>
+          <button class="filter-btn" id="btnFilter_delegate" onclick="setPlanFilter('delegate')">👥 Delegated (<span id="cntDelegate">0</span>)</button>
+          <button class="filter-btn" id="btnFilter_break" onclick="setPlanFilter('break')">☕ Breaks (<span id="cntBreak">0</span>)</button>
+        </div>
+        <div class="meta" id="planTimeSummary" style="margin:0;font-weight:600;color:#93c5fd"></div>
+      </div>
+      <div id="planItemsContainer"></div>
       <div class="actions">
         <button class="green" onclick="decide('accepted')" ${status!=="pending"?"disabled":""}>Accept plan</button>
         <button class="ghost" onclick="toggleEdit()" ${status!=="pending"?"disabled":""} id="editBtn">Edit plan</button>
@@ -945,9 +1223,12 @@ function _attachScheduleTimes(items) {
 async function saveEdit(){
   const boxes=document.querySelectorAll(".editcb");
   const kept=[],removed=[];
-  boxes.forEach((box,idx)=>{
-    if(box.checked) kept.push(CURRENT_PLAN[idx]);
-    else removed.push(CURRENT_PLAN[idx].title||"item "+(idx+1));
+  boxes.forEach((box)=>{
+    const boxIdx = parseInt(box.getAttribute("data-idx"), 10);
+    if(!isNaN(boxIdx) && CURRENT_PLAN[boxIdx]){
+      if(box.checked) kept.push(CURRENT_PLAN[boxIdx]);
+      else removed.push(CURRENT_PLAN[boxIdx].title||"item "+(boxIdx+1));
+    }
   });
   if(!kept.length){
     document.getElementById("err").textContent="⚠ Keep at least one plan item — an empty plan cannot be applied.";
